@@ -1,4 +1,4 @@
-# ISL Translator (Thin-Client Architecture)
+# Ishara - ISL Translator
 
 This application is a real-time Indian Sign Language (ISL) translator. It uses a **Thin-Client Architecture** where the heavy Machine Learning models are offloaded to a high-performance Python backend, and the lightweight Flutter mobile app handles the camera and UI.
 
