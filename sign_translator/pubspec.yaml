@@ -1,0 +1,41 @@
+name: isl_translator
+description: Indian Sign Language Recognition & Translation App
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Camera feed
+  camera: ^0.10.5+9
+
+  # TFLite — runs your sign classifier + hand landmark model
+  tflite_flutter: ^0.11.0
+
+  # Image processing (convert CameraImage for TFLite)
+  image: ^4.9.1
+
+  # State management
+  provider: ^6.1.2
+
+  # UI utilities
+  cupertino_icons: ^1.0.6
+  flutter_animate: ^4.5.0        # smooth animations
+  google_fonts: ^6.2.1           # clean typography
+  web_socket_channel: ^3.0.3
+  http: ^1.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/models/             # hand_landmark.tflite + sign_classifier.tflite
+    - assets/data/               # vocabulary.json

@@ -1,0 +1,34 @@
+# Windows/System Files
+.DS_Store
+Thumbs.db
+*.bak
+
+# Python / Backend
+backend/.venv/
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/.pytest_cache/
+
+# MediaPipe AI Models (These are too big for GitHub)
+backend/models/
+backend/*.task
+
+# Flutter / Frontend
+Flutter/
+sign_translator/.dart_tool/
+sign_translator/build/
+sign_translator/ios/Pods/
+sign_translator/.flutter-plugins
+sign_translator/.flutter-plugins-dependencies
+sign_translator/.pub-cache/
+sign_translator/.pub/
+sign_translator/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# Backups
+*.zip
