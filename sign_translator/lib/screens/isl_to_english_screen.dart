@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/sign_classifier_service.dart';
 import '../services/isl_converter_service.dart';
-import '../widgets/output_card.dart';
+
+import '../theme/app_themes.dart';
 import 'package:flutter/foundation.dart';
 
 class ISLToEnglishScreen extends StatefulWidget {
@@ -174,10 +175,11 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
           Container(
             height: 400,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.2),
+                color: Theme.of(context).colorScheme.outline,
+                width: 1.5,
               ),
             ),
             child: ClipRRect(
@@ -198,15 +200,16 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
                                 return Stack(
                                   fit: StackFit.expand,
                                   children: [
-                                    CustomPaint(
-                                      painter: HolisticNodePainter(
-                                        poseNodes: classifier.poseNodes,
-                                        faceNodes: classifier.faceNodes,
-                                        leftHandNodes: classifier.leftHandNodes,
-                                        rightHandNodes: classifier.rightHandNodes,
-                                        isFrontCamera: _camera!.description.lensDirection == CameraLensDirection.front,
+                                      CustomPaint(
+                                        painter: HolisticNodePainter(
+                                          poseNodes: classifier.poseNodes,
+                                          faceNodes: classifier.faceNodes,
+                                          leftHandNodes: classifier.leftHandNodes,
+                                          rightHandNodes: classifier.rightHandNodes,
+                                          isFrontCamera: _camera!.description.lensDirection == CameraLensDirection.front,
+                                          theme: Theme.of(context),
+                                        ),
                                       ),
-                                    ),
                                     if (classifier.lastDebugError.isNotEmpty)
                                       Positioned(
                                         top: 16,
@@ -261,36 +264,92 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
           ),
           const SizedBox(height: 24),
           
-          // Primary Action Button
-          FilledButton(
+          // Primary Action Button (Plum pill when translating)
+          FilledButton.icon(
             onPressed: _toggleTranslation,
-            style: FilledButton.styleFrom(
-              backgroundColor: _isTranslating ? Colors.red : Theme.of(context).colorScheme.primary,
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+            icon: Icon(
+              _isTranslating ? Icons.close : Icons.camera_alt,
+              color: Theme.of(context).colorScheme.onPrimary,
+            ),
+            label: Text(
+              _isTranslating ? 'Stop Translating' : 'Start Translating',
+              style: AppThemes.buttonLabel(Theme.of(context)).copyWith(
+                color: Theme.of(context).colorScheme.onPrimary,
               ),
             ),
-            child: Text(
-              _isTranslating ? 'Stop Translating' : 'Translate',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: FilledButton.styleFrom(
+              backgroundColor: _isTranslating 
+                  ? const Color(0xFF880E4F) // Strict plum color requested
+                  : Theme.of(context).colorScheme.primary,
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              minimumSize: const Size.fromHeight(60), // full width
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(30), // pill shaped
+              ),
             ),
           ),
           const SizedBox(height: 32),
 
-          // Translation Output Cards
-          OutputCard(
-            title: 'ISL Sequence',
-            content: _glossBuffer.isNotEmpty ? _glossBuffer.join(' ') : 'Waiting for signs...',
-          ),
-          const SizedBox(height: 16),
-          OutputCard(
-            title: 'Context-Based Statement',
-            content: _englishOutput.isNotEmpty 
-                ? (_structureNote.isNotEmpty 
-                    ? '$_englishOutput\n($_structureNote)' 
-                    : _englishOutput)
-                : 'Translation will appear here...',
+          // Sequence Chips Section
+          if (_glossBuffer.isNotEmpty) ...[
+            Text(
+              'ISL SEQUENCE',
+              style: AppThemes.labelCaps(Theme.of(context)),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8.0,
+              runSpacing: 8.0,
+              children: _glossBuffer.map((gloss) {
+                return Chip(
+                  label: Text(gloss),
+                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                  labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 24),
+          ],
+
+          // Context Statement Card
+          Card(
+            margin: EdgeInsets.zero,
+            elevation: 0,
+            color: Theme.of(context).colorScheme.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: BorderSide(color: Theme.of(context).colorScheme.outline),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'CONTEXT STATEMENT',
+                    style: AppThemes.labelCaps(Theme.of(context)),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _englishOutput.isNotEmpty 
+                        ? '“$_englishOutput”' 
+                        : '“Waiting for translation...”',
+                    style: AppThemes.quoteText(Theme.of(context)),
+                  ),
+                  if (_structureNote.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _structureNote,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ]
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -304,6 +363,7 @@ class HolisticNodePainter extends CustomPainter {
   final List<Offset> leftHandNodes;
   final List<Offset> rightHandNodes;
   final bool isFrontCamera;
+  final ThemeData theme;
 
   HolisticNodePainter({
     required this.poseNodes,
@@ -311,20 +371,21 @@ class HolisticNodePainter extends CustomPainter {
     required this.leftHandNodes,
     required this.rightHandNodes,
     this.isFrontCamera = false,
+    required this.theme,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final posePointPaint = Paint()..color = Colors.white..style = PaintingStyle.fill;
-    final poseLinePaint = Paint()..color = Colors.white70..strokeWidth = 2.0..style = PaintingStyle.stroke;
+    // final posePointPaint = Paint()..color = theme.colorScheme.onSurface..style = PaintingStyle.fill;
+    // final poseLinePaint = Paint()..color = theme.colorScheme.onSurfaceVariant..strokeWidth = 2.0..style = PaintingStyle.stroke;
 
-    final handPointPaint = Paint()..color = Colors.blueAccent..style = PaintingStyle.fill;
-    final handLinePaint = Paint()..color = Colors.pinkAccent..strokeWidth = 2.0..style = PaintingStyle.stroke;
+    final handPointPaint = Paint()..color = Colors.redAccent..style = PaintingStyle.fill;
+    final handLinePaint = Paint()..color = Colors.redAccent..strokeWidth = 2.0..style = PaintingStyle.stroke;
       
     final facePointPaint = Paint()..color = Colors.greenAccent..style = PaintingStyle.fill;
-    final faceLinePaint = Paint()..color = Colors.greenAccent..strokeWidth = 1.5..style = PaintingStyle.stroke;
+    final faceLinePaint = Paint()..color = Colors.greenAccent..strokeWidth = 1.0..style = PaintingStyle.stroke;
 
-    void drawNodes(List<Offset> nodes, List<List<int>> connections, Paint pPaint, Paint lPaint, double radius) {
+    void drawNodes(List<Offset> nodes, List<List<int>> connections, Paint pPaint, Paint lPaint, double radius, {bool onlyConnectedNodes = false}) {
       if (nodes.isEmpty) return;
       final screenNodes = nodes.map((node) {
         final x = (isFrontCamera ? 1.0 - node.dx : node.dx) * size.width;
@@ -332,14 +393,19 @@ class HolisticNodePainter extends CustomPainter {
         return Offset(x, y);
       }).toList();
 
+      Set<int> connectedIndices = {};
+
       for (final c in connections) {
         if (c[0] < screenNodes.length && c[1] < screenNodes.length) {
           canvas.drawLine(screenNodes[c[0]], screenNodes[c[1]], lPaint);
+          connectedIndices.add(c[0]);
+          connectedIndices.add(c[1]);
         }
       }
 
-      for (final screenNode in screenNodes) {
-        canvas.drawCircle(screenNode, radius, pPaint);
+      for (int i = 0; i < screenNodes.length; i++) {
+        if (onlyConnectedNodes && !connectedIndices.contains(i)) continue;
+        canvas.drawCircle(screenNodes[i], radius, pPaint);
       }
     }
 
@@ -359,20 +425,25 @@ class HolisticNodePainter extends CustomPainter {
       // Left Eyebrow
       [265, 353], [353, 276], [276, 283], [283, 282], [282, 295], // Lower
       [383, 300], [300, 293], [293, 334], [334, 296], [296, 336], [336, 285], [285, 417], // Upper
+      // Right Eye
+      [33, 7], [7, 163], [163, 144], [144, 145], [145, 153], [153, 154], [154, 155], [155, 133], [133, 173], [173, 157], [157, 158], [158, 159], [159, 160], [160, 161], [161, 246], [246, 33],
+      // Left Eye
+      [362, 382], [382, 381], [381, 380], [380, 374], [374, 373], [373, 390], [390, 249], [249, 263], [263, 466], [466, 388], [388, 387], [387, 386], [386, 385], [385, 384], [384, 398], [398, 362],
       // Lips Outer
       [61, 146], [146, 91], [91, 181], [181, 84], [84, 17], [17, 314], [314, 405], [405, 321], [321, 375], [375, 291],
       [61, 185], [185, 40], [40, 39], [39, 37], [37, 0], [0, 267], [267, 269], [269, 270], [270, 409], [409, 291],
       // Lips Inner
       [78, 95], [95, 88], [88, 178], [178, 87], [87, 14], [14, 317], [317, 402], [402, 318], [318, 324], [324, 308],
       [78, 191], [191, 80], [80, 81], [81, 82], [82, 13], [13, 312], [312, 311], [311, 310], [310, 415], [415, 308],
+      // Face Oval
+      [10, 338], [338, 297], [297, 332], [332, 284], [284, 251], [251, 389], [389, 356], [356, 454], [454, 323], [323, 361], [361, 288], [288, 397], [397, 365], [365, 379], [379, 378], [378, 400], [400, 377], [377, 152], [152, 148], [148, 176], [176, 149], [149, 150], [150, 136], [136, 172], [172, 58], [58, 132], [132, 93], [93, 234], [234, 127], [127, 162], [162, 21], [21, 54], [54, 103], [103, 67], [67, 109], [109, 10]
     ];
 
-    // drawNodes(poseNodes, poseConnections, posePointPaint, poseLinePaint, 4.0); // Hidden by request
     drawNodes(leftHandNodes, handConnections, handPointPaint, handLinePaint, 3.0);
     drawNodes(rightHandNodes, handConnections, handPointPaint, handLinePaint, 3.0);
     
-    // Draw face mesh with expressive connections
-    drawNodes(faceNodes, faceConnections, facePointPaint, faceLinePaint, 1.5);
+    // Draw face mesh ONLY for connected points so eyebrows are visible and not buried in points
+    drawNodes(faceNodes, faceConnections, facePointPaint, faceLinePaint, 1.5, onlyConnectedNodes: true);
   }
 
   @override

@@ -39,3 +39,4 @@ flutter:
   assets:
     - assets/models/             # hand_landmark.tflite + sign_classifier.tflite
     - assets/data/               # vocabulary.json
+    - assets/images/

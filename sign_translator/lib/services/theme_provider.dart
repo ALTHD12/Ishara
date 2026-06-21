@@ -1,14 +1,26 @@
 import 'package:flutter/material.dart';
+import '../theme/app_themes.dart';
 
 class ThemeProvider extends ChangeNotifier {
-  bool _isDarkMode = true;
+  AppTheme _currentTheme = AppTheme.dark;
+  Color _accentColor = const Color(0xFF880E4F); // Default Plum
 
-  bool get isDarkMode => _isDarkMode;
+  AppTheme get currentTheme => _currentTheme;
+  Color get accentColor => _accentColor;
 
-  ThemeMode get themeMode => _isDarkMode ? ThemeMode.dark : ThemeMode.light;
+  ThemeData get themeData => AppThemes.getThemeData(_currentTheme, _accentColor);
 
-  void toggleTheme() {
-    _isDarkMode = !_isDarkMode;
-    notifyListeners();
+  void setTheme(AppTheme theme) {
+    if (_currentTheme != theme) {
+      _currentTheme = theme;
+      notifyListeners();
+    }
+  }
+
+  void setAccentColor(Color color) {
+    if (_accentColor != color) {
+      _accentColor = color;
+      notifyListeners();
+    }
   }
 }

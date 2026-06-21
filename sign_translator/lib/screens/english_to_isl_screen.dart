@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/isl_converter_service.dart';
 import '../widgets/output_card.dart';
+import '../widgets/sign_avatar_painter.dart';
+import '../theme/app_themes.dart';
 
 class EnglishToISLScreen extends StatefulWidget {
   const EnglishToISLScreen({super.key});
@@ -18,6 +20,7 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
   bool _isPlaying = false;
   Timer? _animationTimer;
   double _playbackSpeed = 1.0;
+  bool _isSpeedMenuExpanded = false;
   String _originalSentence = '';
 
   @override
@@ -55,7 +58,7 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
       }
     });
 
-    final int durationMs = (2500 / _playbackSpeed).round();
+    final int durationMs = (1500 / _playbackSpeed).round(); // Default 1.5 secs per word
     _animationTimer = Timer.periodic(Duration(milliseconds: durationMs), (timer) {
       if (!mounted) {
         timer.cancel();
@@ -87,23 +90,42 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
     _playAnimation();
   }
 
-  void _toggleSpeed() {
+  void _setSpeed(double speed) {
     setState(() {
-      if (_playbackSpeed == 1.0) {
-        _playbackSpeed = 1.5;
-      } else if (_playbackSpeed == 1.5) {
-        _playbackSpeed = 2.0;
-      } else if (_playbackSpeed == 2.0) {
-        _playbackSpeed = 0.5;
-      } else {
-        _playbackSpeed = 1.0;
-      }
+      _playbackSpeed = speed;
+      _isSpeedMenuExpanded = false; // Auto-collapse on selection
     });
     
-    // Restart timer with new speed if playing
     if (_isPlaying) {
       _playAnimation();
     }
+  }
+
+  Widget _buildCircleButton({
+    required Widget child,
+    required VoidCallback? onPressed,
+    bool isSelected = false,
+    bool isPrimary = false,
+  }) {
+    return ElevatedButton(
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+        shape: const CircleBorder(),
+        padding: const EdgeInsets.all(20),
+        backgroundColor: isPrimary
+            ? Theme.of(context).colorScheme.onSurface
+            : isSelected
+                ? Theme.of(context).colorScheme.primaryContainer
+                : Theme.of(context).colorScheme.surfaceContainerHighest,
+        foregroundColor: isPrimary
+            ? Theme.of(context).scaffoldBackgroundColor
+            : isSelected
+                ? Theme.of(context).colorScheme.onPrimaryContainer
+                : Theme.of(context).colorScheme.onSurfaceVariant,
+        elevation: isPrimary ? 4 : 0,
+      ),
+      child: child,
+    );
   }
 
   @override
@@ -129,21 +151,19 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
                     height: 250,
                     width: double.infinity,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                      color: Theme.of(context).colorScheme.surface,
                       borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Theme.of(context).colorScheme.outline),
                     ),
-                    child: const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.person, size: 80, color: Colors.grey),
-                          SizedBox(height: 16),
-                          Text(
-                            'Avatar Animation Area',
-                            style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500),
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: CustomPaint(
+                            painter: SignAvatarPainter(theme: Theme.of(context)),
                           ),
-                        ],
-                      ),
+                        ),
+                        // TODO: switch to rive package for true skeletal sign animation
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -151,72 +171,112 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
                   // Subtitle Bar (Current word)
                   Container(
                     width: double.infinity,
-                    height: 50,
                     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(12),
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                      border: Border.all(color: Theme.of(context).colorScheme.outline),
                     ),
                     child: Center(
                       child: Text(
                         _currentSequence.isNotEmpty ? _currentSequence[_currentIndex] : '',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.onPrimaryContainer,
-                        ),
+                        style: AppThemes.labelCaps(Theme.of(context)),
                       ),
                     ),
                   ),
                   const SizedBox(height: 16),
                   
-                  // Animation Controls
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      IconButton.filledTonal(
-                        onPressed: _currentSequence.isNotEmpty ? _reloadAnimation : null,
-                        icon: const Icon(Icons.replay),
-                        tooltip: 'Replay',
-                        iconSize: 28,
-                      ),
-                      FloatingActionButton(
-                        onPressed: _currentSequence.isNotEmpty
-                            ? () {
-                                if (_isPlaying) {
-                                  _pauseAnimation();
-                                } else {
-                                  _playAnimation();
+                  // Animation Controls (Expanding Pill)
+                  AnimatedCrossFade(
+                    duration: const Duration(milliseconds: 300),
+                    crossFadeState: _isSpeedMenuExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+                    firstChild: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildCircleButton(
+                          onPressed: _currentSequence.isNotEmpty ? _reloadAnimation : null,
+                          child: const Icon(Icons.replay),
+                        ),
+                        _buildCircleButton(
+                          onPressed: _currentSequence.isNotEmpty
+                              ? () {
+                                  if (_isPlaying) {
+                                    _pauseAnimation();
+                                  } else {
+                                    _playAnimation();
+                                  }
                                 }
-                              }
-                            : null,
-                        elevation: 0,
-                        backgroundColor: _currentSequence.isNotEmpty
-                            ? Theme.of(context).colorScheme.primaryContainer
-                            : Theme.of(context).colorScheme.surfaceContainerHighest,
-                        foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
-                        child: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 32),
+                              : null,
+                          isPrimary: true,
+                          child: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 28),
+                        ),
+                        _buildCircleButton(
+                          onPressed: () => setState(() => _isSpeedMenuExpanded = true),
+                          child: Text('${_playbackSpeed}x', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        ),
+                      ],
+                    ),
+                    secondChild: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
                       ),
-                      InkWell(
-                        onTap: _toggleSpeed,
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.secondaryContainer,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            '${_playbackSpeed}x',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.onSecondaryContainer,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            InkWell(
+                              onTap: () => setState(() => _isSpeedMenuExpanded = false),
+                              borderRadius: BorderRadius.circular(20),
+                              child: const Padding(
+                                padding: EdgeInsets.all(12.0),
+                                child: Icon(Icons.circle, size: 12),
+                              ),
                             ),
-                          ),
+                            const SizedBox(width: 12),
+                            for (final speed in [0.5, 0.75, 1.0, 1.5, 2.0]) ...[
+                              InkWell(
+                                onTap: () => _setSpeed(speed),
+                                borderRadius: BorderRadius.circular(20),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: _playbackSpeed == speed 
+                                        ? Theme.of(context).colorScheme.onSurface 
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    '${speed}x',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                      color: _playbackSpeed == speed
+                                          ? Theme.of(context).colorScheme.surface
+                                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                            ]
+                          ],
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ],
               ),
@@ -233,7 +293,15 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
               fillColor: Theme.of(context).colorScheme.surface,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
+                borderSide: BorderSide(color: Theme.of(context).colorScheme.outline, width: 1),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: Theme.of(context).colorScheme.outline, width: 1),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface, width: 1),
               ),
               contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
             ),
@@ -243,15 +311,17 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
           const SizedBox(height: 16),
           
           // Translate Button
-          FilledButton(
+          TextButton(
             onPressed: _translate,
-            style: FilledButton.styleFrom(
+            style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 20),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+            ),
+            child: Center(
+              child: Text(
+                'Translate',
+                style: AppThemes.buttonLabel(Theme.of(context)),
               ),
             ),
-            child: const Text('Translate', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(height: 24),
 
