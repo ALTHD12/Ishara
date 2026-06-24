@@ -6,6 +6,8 @@ import 'services/sign_classifier_service.dart';
 import 'services/theme_provider.dart';
 import 'screens/home_screen.dart';
 
+final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -35,6 +37,7 @@ class ISLApp extends StatelessWidget {
           title: 'ISL Translator',
           debugShowCheckedModeBanner: false,
           theme: themeProvider.themeData,
+          navigatorObservers: [routeObserver],
           home: const HomeScreen(),
         );
       },

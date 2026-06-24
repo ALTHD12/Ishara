@@ -6,6 +6,7 @@ import '../services/isl_converter_service.dart';
 
 import '../theme/app_themes.dart';
 import 'package:flutter/foundation.dart';
+import '../main.dart'; // To access routeObserver
 
 class ISLToEnglishScreen extends StatefulWidget {
   const ISLToEnglishScreen({super.key});
@@ -14,7 +15,7 @@ class ISLToEnglishScreen extends StatefulWidget {
   State<ISLToEnglishScreen> createState() => _ISLToEnglishScreenState();
 }
 
-class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBindingObserver {
+class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBindingObserver, RouteAware {
   CameraController? _camera;
   bool _cameraReady = false;
   bool _isTranslating = false;
@@ -29,21 +30,84 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
 
   // Debounce: avoid adding the same word repeatedly
   String _lastAddedSign = '';
-  int _holdFrames = 0;
-  static const int _holdThreshold = 15; // frames to hold before accepting next
+  String _currentConsecutiveSign = '';
+  int _consecutiveFrames = 0;
+  static const int _consecutiveThreshold = 2;
+
+  late SignClassifierService _classifierService;
+  late ISLConverterService _converterService;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     
+    _classifierService = context.read<SignClassifierService>();
+    _converterService = context.read<ISLConverterService>();
+
     // Auto-initialize camera on load
     _initCamera();
 
-    // Load TFLite models in background
+    // Load TFLite models in background and listen for signs
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<SignClassifierService>().loadModels();
+      _classifierService.loadModels();
+      _classifierService.addListener(_onClassifierUpdate);
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  @override
+  void didPushNext() {
+    // Another route was pushed over us (e.g., DataRecorderScreen)
+    // Release the camera so the new route can use it
+    if (_camera != null && _camera!.value.isInitialized) {
+      _camera!.dispose();
+      _camera = null;
+      _cameraReady = false;
+      if (mounted) setState(() {});
+    }
+  }
+
+  @override
+  void didPopNext() {
+    // The pushed route was popped. We are visible again.
+    if (_camera == null) {
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) _initCamera();
+      });
+    }
+  }
+
+  void _onClassifierUpdate() {
+    if (!mounted || !_isTranslating) return;
+    
+    final currentSign = _classifierService.currentSign;
+    
+    if (currentSign != null && currentSign.isNotEmpty) {
+      if (currentSign == _currentConsecutiveSign) {
+        _consecutiveFrames++;
+        if (_consecutiveFrames == _consecutiveThreshold) {
+          if (currentSign != _lastAddedSign) {
+            setState(() {
+              _glossBuffer.add(currentSign);
+              _lastAddedSign = currentSign;
+              _translate();
+            });
+          }
+        }
+      } else {
+        _currentConsecutiveSign = currentSign;
+        _consecutiveFrames = 1;
+      }
+    } else {
+      _currentConsecutiveSign = '';
+      _consecutiveFrames = 0;
+    }
   }
 
   Future<void> _initCamera() async {
@@ -59,7 +123,6 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
       cam,
       ResolutionPreset.medium,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.yuv420,
     );
 
     try {
@@ -79,45 +142,34 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
   Future<void> _switchCamera() async {
     if (_camera != null) {
       await _camera!.stopImageStream();
-      await _camera!.dispose();
+      final oldCamera = _camera;
       _camera = null;
       _cameraReady = false;
+      setState(() {});
+      await oldCamera!.dispose();
+      await Future.delayed(const Duration(milliseconds: 300)); // Allow hardware to release lock
     }
-    setState(() {
-      _lensDirection = _lensDirection == CameraLensDirection.front
-          ? CameraLensDirection.back
-          : CameraLensDirection.front;
-    });
+    
+    _lensDirection = _lensDirection == CameraLensDirection.front
+        ? CameraLensDirection.back
+        : CameraLensDirection.front;
+        
     await _initCamera();
   }
 
-  void _onFrame(CameraImage image) async {
+  void _onFrame(CameraImage image) {
     if (!mounted || !_isTranslating) return;
 
-    final result = await context.read<SignClassifierService>().processFrame(
+    _classifierService.processFrame(
       image, 
       _camera!.description.sensorOrientation
     );
-
-    if (result == null) return;
-    if (!mounted) return;
-
-    setState(() {
-      if (result.sign != _lastAddedSign || _holdFrames > _holdThreshold) {
-        _glossBuffer.add(result.sign);
-        _lastAddedSign = result.sign;
-        _holdFrames = 0;
-        _translate();
-      } else {
-        _holdFrames++;
-      }
-    });
   }
 
   void _translate() async {
     if (_glossBuffer.isEmpty) return;
     final gloss = _glossBuffer.join(' ');
-    final result = await context.read<ISLConverterService>().islToEnglish(gloss);
+    final result = await _converterService.islToEnglish(gloss);
     
     if (mounted) {
       setState(() {
@@ -141,219 +193,256 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
         _englishOutput = '';
         _structureNote = '';
         _lastAddedSign = '';
-        _holdFrames = 0;
+        _currentConsecutiveSign = '';
+        _consecutiveFrames = 0;
       });
-      context.read<SignClassifierService>().resetBuffer();
+      _classifierService.resetBuffer();
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_camera == null || !_camera!.value.isInitialized) return;
     if (state == AppLifecycleState.inactive) {
-      _camera!.dispose();
+      if (_camera != null && _camera!.value.isInitialized) {
+        _camera!.dispose();
+        _camera = null;
+        _cameraReady = false;
+        if (mounted) setState(() {});
+      }
     } else if (state == AppLifecycleState.resumed) {
-      _initCamera();
+      if (_camera == null) {
+        _initCamera();
+      }
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    routeObserver.unsubscribe(this);
+    _classifierService.removeListener(_onClassifierUpdate);
     _camera?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Camera Preview Area
-          Container(
-            height: 400,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: Theme.of(context).colorScheme.outline,
-                width: 1.5,
-              ),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: _cameraReady && _camera != null
-                  ? Center(
-                      child: AspectRatio(
-                        aspectRatio: 1 / _camera!.value.aspectRatio,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            CameraPreview(_camera!),
-                        // Hand Nodes Overlay
-                        if (_isTranslating)
-                          Positioned.fill(
-                            child: Consumer<SignClassifierService>(
-                              builder: (context, classifier, child) {
-                                return Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                      CustomPaint(
-                                        painter: HolisticNodePainter(
-                                          poseNodes: classifier.poseNodes,
-                                          faceNodes: classifier.faceNodes,
-                                          leftHandNodes: classifier.leftHandNodes,
-                                          rightHandNodes: classifier.rightHandNodes,
-                                          isFrontCamera: _camera!.description.lensDirection == CameraLensDirection.front,
-                                          theme: Theme.of(context),
-                                        ),
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Camera Feed
+              Container(
+                height: 400,
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (_cameraReady && _camera != null)
+                        SizedBox.expand(
+                          child: FittedBox(
+                            fit: BoxFit.cover,
+                            child: SizedBox(
+                              width: _camera!.value.previewSize?.height ?? 1,
+                              height: _camera!.value.previewSize?.width ?? 1,
+                              child: Stack(
+                                children: [
+                                  CameraPreview(_camera!),
+                                  // Hand Nodes Overlay
+                                  if (_isTranslating)
+                                    Positioned.fill(
+                                      child: Consumer<SignClassifierService>(
+                                        builder: (context, classifier, child) {
+                                          return CustomPaint(
+                                            painter: HolisticNodePainter(
+                                              poseNodes: classifier.poseNodes,
+                                              faceNodes: classifier.faceNodes,
+                                              leftHandNodes: classifier.leftHandNodes,
+                                              rightHandNodes: classifier.rightHandNodes,
+                                              isFrontCamera: _lensDirection == CameraLensDirection.front,
+                                              theme: Theme.of(context),
+                                            ),
+                                          );
+                                        },
                                       ),
-                                    if (classifier.lastDebugError.isNotEmpty)
-                                      Positioned(
-                                        top: 16,
-                                        left: 16,
-                                        right: 16,
-                                        child: Container(
-                                          padding: const EdgeInsets.all(8),
-                                          color: Colors.black87,
-                                          child: Text(
-                                            classifier.lastDebugError,
-                                            style: const TextStyle(color: Colors.redAccent, fontSize: 12),
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                );
-                              },
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
-                        // Camera Switch Button
+                        )
+                      else
+                        const Center(
+                          child: CircularProgressIndicator(),
+                        ),
+                      
+                        
+                      // Real-time confidence floating UI
+                      if (_isTranslating)
                         Positioned(
-                          bottom: 16,
-                          right: 16,
-                          child: IconButton.filledTonal(
-                            onPressed: _switchCamera,
-                            icon: const Icon(Icons.flip_camera_ios),
-                            tooltip: 'Switch Camera',
+                          top: 16,
+                          left: 16,
+                          child: Consumer<SignClassifierService>(
+                            builder: (context, classifier, child) {
+                              if (classifier.currentSign == null) return const SizedBox.shrink();
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.black54,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  '${classifier.currentSign} (${(classifier.currentConfidence * 100).toStringAsFixed(1)}%)',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                )
-              : const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 16),
-                          Text(
-                            'Connecting to Camera...',
-                            style: TextStyle(
-                              color: Colors.grey,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                            ),
+
+                      // Debug error display
+                      if (_isTranslating)
+                        Positioned.fill(
+                          child: Consumer<SignClassifierService>(
+                            builder: (context, classifier, child) {
+                              if (classifier.lastDebugError.isNotEmpty) {
+                                return Align(
+                                  alignment: Alignment.topCenter,
+                                  child: Container(
+                                    margin: const EdgeInsets.only(top: 60),
+                                    padding: const EdgeInsets.all(8),
+                                    color: Colors.black87,
+                                    child: Text(
+                                      classifier.lastDebugError,
+                                      style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                                    ),
+                                  ),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
                           ),
-                        ],
-                      ),
-                    ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          
-          // Primary Action Button (Plum pill when translating)
-          FilledButton.icon(
-            onPressed: _toggleTranslation,
-            icon: Icon(
-              _isTranslating ? Icons.close : Icons.camera_alt,
-              color: Theme.of(context).colorScheme.onPrimary,
-            ),
-            label: Text(
-              _isTranslating ? 'Stop Translating' : 'Start Translating',
-              style: AppThemes.buttonLabel(Theme.of(context)).copyWith(
-                color: Theme.of(context).colorScheme.onPrimary,
-              ),
-            ),
-            style: FilledButton.styleFrom(
-              backgroundColor: _isTranslating 
-                  ? const Color(0xFF880E4F) // Strict plum color requested
-                  : Theme.of(context).colorScheme.primary,
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              minimumSize: const Size.fromHeight(60), // full width
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30), // pill shaped
-              ),
-            ),
-          ),
-          const SizedBox(height: 32),
+                        ),
 
-          // Sequence Chips Section
-          if (_glossBuffer.isNotEmpty) ...[
-            Text(
-              'ISL SEQUENCE',
-              style: AppThemes.labelCaps(Theme.of(context)),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8.0,
-              runSpacing: 8.0,
-              children: _glossBuffer.map((gloss) {
-                return Chip(
-                  label: Text(gloss),
-                  backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-                  labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 24),
-          ],
-
-          // Context Statement Card
-          Card(
-            margin: EdgeInsets.zero,
-            elevation: 0,
-            color: Theme.of(context).colorScheme.surface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-              side: BorderSide(color: Theme.of(context).colorScheme.outline),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'CONTEXT STATEMENT',
-                    style: AppThemes.labelCaps(Theme.of(context)),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _englishOutput.isNotEmpty 
-                        ? '“$_englishOutput”' 
-                        : '“Waiting for translation...”',
-                    style: AppThemes.quoteText(Theme.of(context)),
-                  ),
-                  if (_structureNote.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Text(
-                      _structureNote,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        fontSize: 12,
+                      // Camera flip button
+                      Positioned(
+                        bottom: 16,
+                        right: 16,
+                        child: FloatingActionButton(
+                          mini: true,
+                          backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.8),
+                          foregroundColor: Theme.of(context).colorScheme.primary,
+                          onPressed: _switchCamera,
+                          child: const Icon(Icons.flip_camera_ios),
+                        ),
                       ),
-                    ),
-                  ]
-                ],
+                    ],
+                  ),
+                ),
               ),
-            ),
+              
+              const SizedBox(height: 24),
+
+              // Action Button
+              ElevatedButton.icon(
+                onPressed: _toggleTranslation,
+                icon: Icon(_isTranslating ? Icons.stop_circle : Icons.camera_alt),
+                label: Text(
+                  _isTranslating ? 'Stop Translating' : 'Start Translating',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isTranslating 
+                      ? Theme.of(context).colorScheme.error
+                      : Theme.of(context).colorScheme.primary,
+                  foregroundColor: _isTranslating
+                      ? Theme.of(context).colorScheme.onError
+                      : Theme.of(context).colorScheme.onPrimary,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: 32),
+
+              // Sequence Chips Section
+              if (_glossBuffer.isNotEmpty) ...[
+                Text(
+                  'ISL SEQUENCE',
+                  style: AppThemes.labelCaps(Theme.of(context)),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8.0,
+                  runSpacing: 8.0,
+                  children: _glossBuffer.map((gloss) {
+                    return Chip(
+                      label: Text(gloss),
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                      labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 24),
+              ],
+
+              // Context Statement Card
+              Card(
+                margin: EdgeInsets.zero,
+                elevation: 0,
+                color: Theme.of(context).colorScheme.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  side: BorderSide(color: Theme.of(context).colorScheme.outline),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'CONTEXT STATEMENT',
+                        style: AppThemes.labelCaps(Theme.of(context)),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _englishOutput.isNotEmpty 
+                            ? '“$_englishOutput”' 
+                            : '“Waiting for translation...”',
+                        style: AppThemes.quoteText(Theme.of(context)),
+                      ),
+                      if (_structureNote.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          _structureNote,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ]
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+        ),
+      );
   }
 }
 
@@ -376,16 +465,13 @@ class HolisticNodePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // final posePointPaint = Paint()..color = theme.colorScheme.onSurface..style = PaintingStyle.fill;
-    // final poseLinePaint = Paint()..color = theme.colorScheme.onSurfaceVariant..strokeWidth = 2.0..style = PaintingStyle.stroke;
-
     final handPointPaint = Paint()..color = Colors.redAccent..style = PaintingStyle.fill;
     final handLinePaint = Paint()..color = Colors.redAccent..strokeWidth = 2.0..style = PaintingStyle.stroke;
       
     final facePointPaint = Paint()..color = Colors.greenAccent..style = PaintingStyle.fill;
     final faceLinePaint = Paint()..color = Colors.greenAccent..strokeWidth = 1.0..style = PaintingStyle.stroke;
 
-    void drawNodes(List<Offset> nodes, List<List<int>> connections, Paint pPaint, Paint lPaint, double radius, {bool onlyConnectedNodes = false}) {
+    void drawNodes(List<Offset> nodes, List<List<int>> connections, Paint pPaint, Paint lPaint, double radius) {
       if (nodes.isEmpty) return;
       final screenNodes = nodes.map((node) {
         final x = (isFrontCamera ? 1.0 - node.dx : node.dx) * size.width;
@@ -393,35 +479,28 @@ class HolisticNodePainter extends CustomPainter {
         return Offset(x, y);
       }).toList();
 
-      Set<int> connectedIndices = {};
-
       for (final c in connections) {
         if (c[0] < screenNodes.length && c[1] < screenNodes.length) {
           canvas.drawLine(screenNodes[c[0]], screenNodes[c[1]], lPaint);
-          connectedIndices.add(c[0]);
-          connectedIndices.add(c[1]);
         }
       }
 
       for (int i = 0; i < screenNodes.length; i++) {
-        if (onlyConnectedNodes && !connectedIndices.contains(i)) continue;
         canvas.drawCircle(screenNodes[i], radius, pPaint);
       }
     }
 
-    const handConnections = [
-      [0, 1], [1, 2], [2, 3], [3, 4],
-      [0, 5], [5, 6], [6, 7], [7, 8],
-      [5, 9], [9, 10], [10, 11], [11, 12],
-      [9, 13], [13, 14], [14, 15], [15, 16],
-      [13, 17], [17, 18], [18, 19], [19, 20],
-      [0, 17]
+    final handConnections = [
+      [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+      [0, 5], [5, 6], [6, 7], [7, 8], // Index
+      [5, 9], [9, 10], [10, 11], [11, 12], // Middle
+      [9, 13], [13, 14], [14, 15], [15, 16], // Ring
+      [13, 17], [0, 17], [17, 18], [18, 19], [19, 20] // Pinky
     ];
 
-    const faceConnections = [
+    final faceConnections = [
       // Right Eyebrow
-      [35, 124], [124, 46], [46, 53], [53, 52], [52, 65], // Lower
-      [156, 70], [70, 63], [63, 105], [105, 66], [66, 107], [107, 55], [55, 193], // Upper
+      [70, 63], [63, 105], [105, 66], [66, 107], [107, 55], [55, 65], [65, 52], [52, 53], [53, 46], // Upper
       // Left Eyebrow
       [265, 353], [353, 276], [276, 283], [283, 282], [282, 295], // Lower
       [383, 300], [300, 293], [293, 334], [334, 296], [296, 336], [336, 285], [285, 417], // Upper
@@ -442,8 +521,8 @@ class HolisticNodePainter extends CustomPainter {
     drawNodes(leftHandNodes, handConnections, handPointPaint, handLinePaint, 3.0);
     drawNodes(rightHandNodes, handConnections, handPointPaint, handLinePaint, 3.0);
     
-    // Draw face mesh ONLY for connected points so eyebrows are visible and not buried in points
-    drawNodes(faceNodes, faceConnections, facePointPaint, faceLinePaint, 1.5, onlyConnectedNodes: true);
+    // Draw full face mesh points for denser node visualization
+    drawNodes(faceNodes, faceConnections, facePointPaint, faceLinePaint, 0.8);
   }
 
   @override

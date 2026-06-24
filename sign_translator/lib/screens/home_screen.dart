@@ -4,6 +4,7 @@ import '../services/theme_provider.dart';
 import '../theme/app_themes.dart';
 import 'isl_to_english_screen.dart';
 import 'english_to_isl_screen.dart';
+import 'data_recorder_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -213,6 +214,17 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 8),
             ],
+          ),
+          ListTile(
+            leading: const Icon(Icons.camera_alt_outlined),
+            title: const Text('Data Training Mode'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const DataRecorderScreen()),
+              );
+            },
           ),
           ListTile(
             leading: const Icon(Icons.info_outline),

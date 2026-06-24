@@ -60,6 +60,15 @@ class MediaPipeService:
                 label = handedness[0].category_name.lower()
                 data[f"{label}_hand"] = [unpad(res) for res in hand_res.hand_landmarks[idx]]
                 
+        # Extract true 3D World Landmarks for Hands (explicit finger placement)
+        if hand_res.hand_world_landmarks and hand_res.handedness:
+            for idx, handedness in enumerate(hand_res.handedness):
+                label = handedness[0].category_name.lower()
+                data[f"{label}_hand_world"] = [
+                    {"x": res.x, "y": res.y, "z": res.z} 
+                    for res in hand_res.hand_world_landmarks[idx]
+                ]
+                
         return data
 
     def process_image(self, img_rgb):

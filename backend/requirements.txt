@@ -4,3 +4,5 @@ websockets
 fastapi
 uvicorn
 spacy
+tensorflow
+scikit-learn

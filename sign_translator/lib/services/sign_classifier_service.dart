@@ -26,6 +26,9 @@ class SignClassifierService extends ChangeNotifier {
   String _lastDebugError = '';
   String get lastDebugError => _lastDebugError;
 
+  String _recordingStatus = '';
+  String get recordingStatus => _recordingStatus;
+
   // Holistic node visualization
   List<Offset> _poseNodes = [];
   List<Offset> _faceNodes = [];
@@ -57,9 +60,17 @@ class SignClassifierService extends ChangeNotifier {
           notifyListeners();
         },
         onDone: () {
-          _lastDebugError = 'WebSocket Disconnected. Did the python server crash?';
+          _lastDebugError = 'WebSocket Disconnected. Reconnecting in 3s...';
           _isReady = false;
+          _isProcessingFrame = false;
           notifyListeners();
+          
+          // Auto-reconnect after 3 seconds
+          Future.delayed(const Duration(seconds: 3), () {
+            if (!_isReady) {
+              loadModels();
+            }
+          });
         }
       );
 
@@ -83,6 +94,21 @@ class SignClassifierService extends ChangeNotifier {
       _leftHandNodes = _parseNodes(data['left_hand']);
       _rightHandNodes = _parseNodes(data['right_hand']);
       
+      // Extract Model Prediction if available
+      if (data.containsKey('sign') && data['sign'] != null) {
+        _currentSign = data['sign'] as String;
+        _currentConfidence = (data['confidence'] as num).toDouble();
+      } else {
+        _currentSign = null;
+        _currentConfidence = 0.0;
+      }
+      
+      if (data.containsKey('recording_status')) {
+        _recordingStatus = data['recording_status'] as String;
+      } else {
+        _recordingStatus = '';
+      }
+      
       _lastDebugError = '';
       notifyListeners();
     } catch(e) {
@@ -105,49 +131,31 @@ class SignClassifierService extends ChangeNotifier {
     _isProcessingFrame = true;
 
     try {
-      // Extract bytes before passing to isolate
-      final formatName = image.format.group.name;
-      final width = image.width;
-      final height = image.height;
-      final List<Uint8List> planes = image.planes.map((p) => p.bytes).toList();
-      
-      int yRowStride = width;
-      int uvRowStride = width ~/ 2;
-      int uvPixelStride = 1;
-      
-      if (formatName != 'bgra8888' && image.planes.length >= 3) {
-        yRowStride = image.planes[0].bytesPerRow;
-        uvRowStride = image.planes[1].bytesPerRow;
-        uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
-      }
-      
-      // Run the heavy math in a background thread to prevent UI lag
-      final result = await compute(CameraUtils.yuvConverter, {
-        'formatName': formatName,
-        'width': width,
-        'height': height,
-        'planes': planes,
-        'yRowStride': yRowStride,
-        'uvRowStride': uvRowStride,
-        'uvPixelStride': uvPixelStride,
+      final rgbData = CameraUtils.yuvConverter({
+        'formatName': image.format.group.name,
+        'width': image.width,
+        'height': image.height,
+        'planes': image.planes.map((p) => p.bytes).toList(),
+        'yRowStride': image.planes[0].bytesPerRow,
+        'uvRowStride': image.planes.length > 1 ? image.planes[1].bytesPerRow : 0,
+        'uvPixelStride': image.planes.length > 1 ? image.planes[1].bytesPerPixel : 0,
       });
 
-      if (result == null) {
+      if (rgbData == null) {
+        _lastDebugError = 'YUV Conversion failed';
         _isProcessingFrame = false;
-        _lastDebugError = 'YUV conversion failed in isolate';
         notifyListeners();
         return null;
       }
 
-      final outWidth = result['width'] as int;
-      final outHeight = result['height'] as int;
-      final rgbBytes = result['bytes'] as Uint8List;
+      final outWidth = rgbData['width'] as int;
+      final outHeight = rgbData['height'] as int;
+      final rgbBytes = rgbData['bytes'] as Uint8List;
 
-      // Create binary payload: 4 bytes width, 4 bytes height, 4 bytes rotation, RGB payload
       final header = ByteData(12);
-      header.setInt32(0, outWidth, Endian.big);
-      header.setInt32(4, outHeight, Endian.big);
-      header.setInt32(8, sensorOrientation, Endian.big);
+      header.setInt32(0, sensorOrientation, Endian.big);
+      header.setInt32(4, outWidth, Endian.big);
+      header.setInt32(8, outHeight, Endian.big);
       
       final payload = BytesBuilder(copy: false);
       payload.add(header.buffer.asUint8List());
@@ -165,6 +173,25 @@ class SignClassifierService extends ChangeNotifier {
   }
 
   // Replaced by CameraUtils.yuvConverter
+
+  void startContinuousRecording(String label) {
+    if (_channel != null && _isReady) {
+      final cmd = jsonEncode({
+        "action": "start_continuous_recording",
+        "label": label,
+      });
+      _channel!.sink.add(cmd);
+    }
+  }
+
+  void triggerTraining() {
+    if (_channel != null && _isReady) {
+      final cmd = jsonEncode({
+        "action": "train_model"
+      });
+      _channel!.sink.add(cmd);
+    }
+  }
 
   void resetBuffer() {
     _poseNodes = [];

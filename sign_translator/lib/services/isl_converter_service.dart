@@ -111,13 +111,42 @@ class ISLConverterService extends ChangeNotifier {
   }
 
   // ── ISL → English ─────────────────────────────────────────────────────────
-  // Note: For now we'll just mock this or return raw until we implement the backend route
   Future<TranslationResult> islToEnglish(String gloss) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${AppConfig.backendHttpUrl}/isl-to-english'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'text': gloss}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        
+        final r = TranslationResult(
+          output: data['output'],
+          sentenceType: SentenceType.statement,
+          tokens: [],
+          structureNote: data['structureNote'] ?? 'NLP Processing Applied',
+        );
+        _result = r;
+        notifyListeners();
+        return r;
+      }
+    } catch (e) {
+      debugPrint('NLP Server Error: $e');
+    }
+    
+    // Fallback if server is down
+    String formattedOutput = gloss.toLowerCase();
+    if (formattedOutput.isNotEmpty) {
+      formattedOutput = formattedOutput[0].toUpperCase() + formattedOutput.substring(1) + ".";
+    }
+    
     final r = TranslationResult(
-      output: gloss.toLowerCase(),
+      output: formattedOutput,
       sentenceType: SentenceType.statement,
       tokens: [],
-      structureNote: 'ISL to English NLP pending backend implementation',
+      structureNote: 'Backend Error - Basic formatting applied',
     );
     _result = r;
     notifyListeners();
