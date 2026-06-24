@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/isl_converter_service.dart';
 import '../widgets/output_card.dart';
-import '../widgets/sign_avatar_painter.dart';
+import '../widgets/signing_playback_widget.dart';
 import '../theme/app_themes.dart';
 
 class EnglishToISLScreen extends StatefulWidget {
@@ -50,34 +50,31 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
   void _playAnimation() {
     if (_currentSequence.isEmpty) return;
     
-    _animationTimer?.cancel();
     setState(() {
       _isPlaying = true;
       if (_currentIndex >= _currentSequence.length) {
         _currentIndex = 0;
       }
     });
+  }
 
-    final int durationMs = (1500 / _playbackSpeed).round(); // Default 1.5 secs per word
-    _animationTimer = Timer.periodic(Duration(milliseconds: durationMs), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
+  void _onWordComplete() async {
+    if (!mounted || !_isPlaying) return;
+    
+    // Pause for a moment between words so it feels natural
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted || !_isPlaying) return;
+
+    setState(() {
+      if (_currentIndex < _currentSequence.length - 1) {
+        _currentIndex++;
+      } else {
+        _isPlaying = false;
       }
-      
-      setState(() {
-        if (_currentIndex < _currentSequence.length - 1) {
-          _currentIndex++;
-        } else {
-          _isPlaying = false;
-          timer.cancel();
-        }
-      });
     });
   }
 
   void _pauseAnimation() {
-    _animationTimer?.cancel();
     setState(() {
       _isPlaying = false;
     });
@@ -158,11 +155,13 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
                     child: Stack(
                       children: [
                         Positioned.fill(
-                          child: CustomPaint(
-                            painter: SignAvatarPainter(theme: Theme.of(context)),
+                          child: SigningPlaybackWidget(
+                            sequenceAsset: 'assets/recordings/${_currentSequence.isNotEmpty ? _currentSequence[_currentIndex] : "HELLO"}.bytes',
+                            isPlaying: _isPlaying,
+                            speed: _playbackSpeed,
+                            onComplete: _onWordComplete,
                           ),
                         ),
-                        // TODO: switch to rive package for true skeletal sign animation
                       ],
                     ),
                   ),
