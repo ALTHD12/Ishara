@@ -338,19 +338,19 @@ class _SkeletonPainter extends CustomPainter {
 
     // ---- Face paint ----
     final facePaint = Paint()
-      ..color = theme.colorScheme.secondary.withValues(alpha: 0.8)
+      ..color = primary.withValues(alpha: 0.8)
       ..strokeWidth = 1.8
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
     // ---- Hand paint ----
     final handLinePaint = Paint()
-      ..color = accent.withValues(alpha: 0.9)
+      ..color = theme.colorScheme.secondary.withValues(alpha: 0.7)
       ..strokeWidth = 2.0
       ..strokeCap = StrokeCap.round;
 
     final handDotPaint = Paint()
-      ..color = accent
+      ..color = theme.colorScheme.secondary
       ..style = PaintingStyle.fill;
 
     // ========== POSE LANDMARKS ==========

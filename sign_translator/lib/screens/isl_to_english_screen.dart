@@ -357,7 +357,7 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
               // Action Button
               ElevatedButton.icon(
                 onPressed: _toggleTranslation,
-                icon: Icon(_isTranslating ? Icons.stop_circle : Icons.camera_alt),
+                icon: Icon(_isTranslating ? Icons.stop_rounded : Icons.camera_alt),
                 label: Text(
                   _isTranslating ? 'Stop Translating' : 'Start Translating',
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -378,28 +378,6 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
               
               const SizedBox(height: 32),
 
-              // Sequence Chips Section
-              if (_glossBuffer.isNotEmpty) ...[
-                Text(
-                  'ISL SEQUENCE',
-                  style: AppThemes.labelCaps(Theme.of(context)),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8.0,
-                  runSpacing: 8.0,
-                  children: _glossBuffer.map((gloss) {
-                    return Chip(
-                      label: Text(gloss),
-                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-                      labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 24),
-              ],
-
               // Context Statement Card
               Card(
                 margin: EdgeInsets.zero,
@@ -412,7 +390,7 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
                 child: Padding(
                   padding: const EdgeInsets.all(24.0),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'CONTEXT STATEMENT',
@@ -439,6 +417,30 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
                   ),
                 ),
               ),
+
+              const SizedBox(height: 24),
+
+              // Sequence Chips Section
+              if (_glossBuffer.isNotEmpty) ...[
+                Text(
+                  'ISL SEQUENCE',
+                  style: AppThemes.labelCaps(Theme.of(context)),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8.0,
+                  runSpacing: 8.0,
+                  children: _glossBuffer.map((gloss) {
+                    return Chip(
+                      label: Text(gloss),
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                      labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 24),
+              ],
             ],
           ),
         ),
@@ -465,11 +467,11 @@ class HolisticNodePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final handPointPaint = Paint()..color = Colors.redAccent..style = PaintingStyle.fill;
-    final handLinePaint = Paint()..color = Colors.redAccent..strokeWidth = 2.0..style = PaintingStyle.stroke;
+    final handPointPaint = Paint()..color = theme.colorScheme.secondary..style = PaintingStyle.fill;
+    final handLinePaint = Paint()..color = theme.colorScheme.secondary.withValues(alpha: 0.7)..strokeWidth = 2.0..style = PaintingStyle.stroke;
       
-    final facePointPaint = Paint()..color = Colors.greenAccent..style = PaintingStyle.fill;
-    final faceLinePaint = Paint()..color = Colors.greenAccent..strokeWidth = 1.0..style = PaintingStyle.stroke;
+    final facePointPaint = Paint()..color = theme.colorScheme.primary.withValues(alpha: 0.8)..style = PaintingStyle.fill;
+    final faceLinePaint = Paint()..color = theme.colorScheme.primary.withValues(alpha: 0.5)..strokeWidth = 1.0..style = PaintingStyle.stroke;
 
     void drawNodes(List<Offset> nodes, List<List<int>> connections, Paint pPaint, Paint lPaint, double radius) {
       if (nodes.isEmpty) return;

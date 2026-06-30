@@ -108,7 +108,7 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
         shape: const CircleBorder(),
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(isPrimary ? 24 : 16),
         backgroundColor: isPrimary
             ? Theme.of(context).colorScheme.onSurface
             : isSelected
@@ -132,157 +132,6 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Avatar Animation Panel
-          Card(
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-            ),
-            color: Theme.of(context).colorScheme.surface,
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  // Avatar placeholder
-                  Container(
-                    height: 250,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Theme.of(context).colorScheme.outline),
-                    ),
-                    child: Stack(
-                      children: [
-                        Positioned.fill(
-                          child: SigningPlaybackWidget(
-                            sequenceAsset: 'assets/recordings/${_currentSequence.isNotEmpty ? _currentSequence[_currentIndex] : "HELLO"}.bytes',
-                            isPlaying: _isPlaying,
-                            speed: _playbackSpeed,
-                            onComplete: _onWordComplete,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Subtitle Bar (Current word)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                      border: Border.all(color: Theme.of(context).colorScheme.outline),
-                    ),
-                    child: Center(
-                      child: Text(
-                        _currentSequence.isNotEmpty ? _currentSequence[_currentIndex] : '',
-                        textAlign: TextAlign.center,
-                        style: AppThemes.labelCaps(Theme.of(context)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Animation Controls (Expanding Pill)
-                  AnimatedCrossFade(
-                    duration: const Duration(milliseconds: 300),
-                    crossFadeState: _isSpeedMenuExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-                    firstChild: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildCircleButton(
-                          onPressed: _currentSequence.isNotEmpty ? _reloadAnimation : null,
-                          child: const Icon(Icons.replay),
-                        ),
-                        _buildCircleButton(
-                          onPressed: _currentSequence.isNotEmpty
-                              ? () {
-                                  if (_isPlaying) {
-                                    _pauseAnimation();
-                                  } else {
-                                    _playAnimation();
-                                  }
-                                }
-                              : null,
-                          isPrimary: true,
-                          child: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 28),
-                        ),
-                        _buildCircleButton(
-                          onPressed: () => setState(() => _isSpeedMenuExpanded = true),
-                          child: Text('${_playbackSpeed}x', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        ),
-                      ],
-                    ),
-                    secondChild: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-                      ),
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            InkWell(
-                              onTap: () => setState(() => _isSpeedMenuExpanded = false),
-                              borderRadius: BorderRadius.circular(20),
-                              child: const Padding(
-                                padding: EdgeInsets.all(12.0),
-                                child: Icon(Icons.circle, size: 12),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            for (final speed in [0.5, 0.75, 1.0, 1.5, 2.0]) ...[
-                              InkWell(
-                                onTap: () => _setSpeed(speed),
-                                borderRadius: BorderRadius.circular(20),
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: _playbackSpeed == speed 
-                                        ? Theme.of(context).colorScheme.onSurface 
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    '${speed}x',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                      color: _playbackSpeed == speed
-                                          ? Theme.of(context).colorScheme.surface
-                                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                            ]
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-
           // Sentence Input Box
           TextField(
             controller: _textController,
@@ -310,19 +159,173 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
           const SizedBox(height: 16),
           
           // Translate Button
-          TextButton(
+          ElevatedButton(
             onPressed: _translate,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 20),
-            ),
-            child: Center(
-              child: Text(
-                'Translate',
-                style: AppThemes.buttonLabel(Theme.of(context)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
               ),
+            ),
+            child: const Text(
+              'Translate',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ),
           const SizedBox(height: 24),
+
+          // Avatar Animation Panel
+          Card(
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              color: Theme.of(context).colorScheme.surface,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    // Avatar placeholder
+                    Container(
+                      height: 250,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Theme.of(context).colorScheme.outline),
+                      ),
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: SigningPlaybackWidget(
+                              sequenceAsset: 'assets/recordings/${_currentSequence.isNotEmpty ? _currentSequence[_currentIndex] : "HELLO"}.bytes',
+                              isPlaying: _isPlaying,
+                              speed: _playbackSpeed,
+                              onComplete: _onWordComplete,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Subtitle Bar (Current word)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                      ),
+                      child: Center(
+                        child: Text(
+                          _currentSequence.isNotEmpty ? _currentSequence[_currentIndex] : '',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.2,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Animation Controls (Expanding Pill)
+                    AnimatedCrossFade(
+                      duration: const Duration(milliseconds: 300),
+                      crossFadeState: _isSpeedMenuExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+                      firstChild: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildCircleButton(
+                            onPressed: _currentSequence.isNotEmpty ? _reloadAnimation : null,
+                            child: const Icon(Icons.replay, size: 20),
+                          ),
+                          const SizedBox(width: 16),
+                          _buildCircleButton(
+                            onPressed: _currentSequence.isNotEmpty
+                                ? () {
+                                    if (_isPlaying) {
+                                      _pauseAnimation();
+                                    } else {
+                                      _playAnimation();
+                                    }
+                                  }
+                                : null,
+                            isPrimary: true,
+                            child: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 36),
+                          ),
+                          const SizedBox(width: 16),
+                          _buildCircleButton(
+                            onPressed: () => setState(() => _isSpeedMenuExpanded = true),
+                            child: Text('${_playbackSpeed}x', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                      secondChild: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                        ),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              InkWell(
+                                onTap: () => setState(() => _isSpeedMenuExpanded = false),
+                                borderRadius: BorderRadius.circular(20),
+                                child: const Padding(
+                                  padding: EdgeInsets.all(12.0),
+                                  child: Icon(Icons.circle, size: 12),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              for (final speed in [0.5, 0.75, 1.0, 1.5, 2.0]) ...[
+                                InkWell(
+                                  onTap: () => _setSpeed(speed),
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      color: _playbackSpeed == speed 
+                                          ? Theme.of(context).colorScheme.onSurface 
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Text(
+                                      '${speed}x',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                        color: _playbackSpeed == speed
+                                            ? Theme.of(context).colorScheme.surface
+                                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                              ]
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
 
           // Natural Language Output Card
           if (_originalSentence.isNotEmpty)

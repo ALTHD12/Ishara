@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum AppTheme { dark, light, amoled }
+enum AppTheme { dark, light, amoled, sunrise }
 
 class AppThemes {
   static ThemeData getThemeData(AppTheme theme, Color accentColor) {
@@ -33,6 +33,16 @@ class AppThemes {
           border: const Color(0xFF1A1A1A),
           textPrimary: const Color(0xFFFFFFFF),
           textSecondary: const Color(0xFF888888),
+          accent: accentColor,
+        );
+      case AppTheme.sunrise:
+        return _buildTheme(
+          brightness: Brightness.light,
+          background: const Color(0xFFFFF8F0),
+          surface: const Color(0xFFFFECCC),
+          border: const Color(0xFFF0D8B8),
+          textPrimary: const Color(0xFF2C1E16),
+          textSecondary: const Color(0xFF8C7361),
           accent: accentColor,
         );
     }

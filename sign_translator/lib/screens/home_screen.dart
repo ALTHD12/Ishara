@@ -143,6 +143,16 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildThemeThumbnail(BuildContext context, AppTheme theme, String label, ThemeProvider provider) {
+    return ThemePreviewThumbnail(
+      theme: theme,
+      label: label,
+      isSelected: provider.currentTheme == theme,
+      accentColor: provider.accentColor,
+      onTap: () => provider.setTheme(theme),
+    );
+  }
+
   Widget _buildDrawer(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
     return Drawer(
@@ -169,29 +179,22 @@ class _HomeScreenState extends State<HomeScreen> {
             leading: const Icon(Icons.palette_outlined),
             title: const Text('Theme'),
             children: [
-              RadioListTile<AppTheme>(
-                title: const Text('Dark'),
-                value: AppTheme.dark,
-                groupValue: themeProvider.currentTheme,
-                onChanged: (val) {
-                  if (val != null) themeProvider.setTheme(val);
-                },
-              ),
-              RadioListTile<AppTheme>(
-                title: const Text('Light'),
-                value: AppTheme.light,
-                groupValue: themeProvider.currentTheme,
-                onChanged: (val) {
-                  if (val != null) themeProvider.setTheme(val);
-                },
-              ),
-              RadioListTile<AppTheme>(
-                title: const Text('AMOLED'),
-                value: AppTheme.amoled,
-                groupValue: themeProvider.currentTheme,
-                onChanged: (val) {
-                  if (val != null) themeProvider.setTheme(val);
-                },
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildThemeThumbnail(context, AppTheme.dark, 'Dark', themeProvider),
+                      const SizedBox(width: 12),
+                      _buildThemeThumbnail(context, AppTheme.light, 'Light', themeProvider),
+                      const SizedBox(width: 12),
+                      _buildThemeThumbnail(context, AppTheme.amoled, 'AMOLED', themeProvider),
+                      const SizedBox(width: 12),
+                      _buildThemeThumbnail(context, AppTheme.sunrise, 'Sunrise', themeProvider),
+                    ],
+                  ),
+                ),
               ),
               // Color Picker Pill
               Container(
@@ -280,3 +283,129 @@ class AboutPlaceholderScreen extends StatelessWidget {
     );
   }
 }
+
+class ThemePreviewThumbnail extends StatelessWidget {
+  final AppTheme theme;
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final Color accentColor;
+
+  const ThemePreviewThumbnail({
+    super.key,
+    required this.theme,
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+    required this.accentColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Generate the target theme data to preview
+    final previewTheme = AppThemes.getThemeData(theme, accentColor);
+    
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 70,
+            height: 100,
+            decoration: BoxDecoration(
+              color: previewTheme.scaffoldBackgroundColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? accentColor : previewTheme.colorScheme.outline,
+                width: isSelected ? 3 : 1,
+              ),
+              boxShadow: [
+                if (isSelected)
+                  BoxShadow(
+                    color: accentColor.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(9), // slightly less than container to fit inside border
+              child: Column(
+                children: [
+                  // Fake App Bar
+                  Container(
+                    height: 14,
+                    color: previewTheme.colorScheme.surfaceContainerHighest,
+                    child: Center(
+                      child: Container(
+                        width: 30,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: previewTheme.colorScheme.primary,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Fake Camera/Avatar Area
+                  Expanded(
+                    flex: 3,
+                    child: Container(
+                      margin: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: theme == AppTheme.amoled 
+                            ? Colors.black 
+                            : previewTheme.colorScheme.surface,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: previewTheme.colorScheme.outlineVariant),
+                      ),
+                      child: Center(
+                        child: Icon(
+                          Icons.person_outline,
+                          size: 20,
+                          color: previewTheme.colorScheme.primary.withValues(alpha: 0.5),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Fake Primary Button
+                  Container(
+                    height: 10,
+                    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: previewTheme.colorScheme.primary,
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                  ),
+                  // Fake Text/Context Area
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      margin: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+                      decoration: BoxDecoration(
+                        color: previewTheme.colorScheme.surface,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: previewTheme.colorScheme.outlineVariant),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
