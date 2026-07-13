@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/sign_classifier_service.dart';
 import '../services/isl_converter_service.dart';
+import '../theme/app_themes.dart';
+import '../widgets/neo_decorations.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({super.key});
@@ -85,14 +87,16 @@ class _CameraScreenState extends State<CameraScreen>
     });
   }
 
-  void _translate() {
+  void _translate() async {
     if (_glossBuffer.isEmpty) return;
     final gloss = _glossBuffer.join(' ');
-    final result = context.read<ISLConverterService>().islToEnglish(gloss);
-    setState(() {
-      _englishOutput = result.output;
-      _structureNote = result.structureNote;
-    });
+    final result = await context.read<ISLConverterService>().islToEnglish(gloss);
+    if (mounted) {
+      setState(() {
+        _englishOutput = result.output;
+        _structureNote = result.structureNote;
+      });
+    }
   }
 
   void _undoLast() {
@@ -130,340 +134,299 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D12),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // ── Header ─────────────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Row(
-                children: [
-                  const Text(
-                    'ISL Live',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Consumer<SignClassifierService>(
-                    builder: (_, svc, __) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: svc.isReady
-                            ? const Color(0xFF4CAF50).withValues(alpha: 0.15)
-                            : Colors.orange.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: svc.isReady ? const Color(0xFF4CAF50) : Colors.orange,
-                          width: 0.5,
-                        ),
-                      ),
-                      child: Text(
-                        svc.isReady ? '● Model Ready' : '○ Loading...',
-                        style: TextStyle(
-                          color: svc.isReady ? const Color(0xFF4CAF50) : Colors.orange,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // ── Camera preview ─────────────────────────────────────────────
-            Expanded(
-              flex: 5,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: _cameraReady && _camera != null
-                      ? Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            CameraPreview(_camera!),
-
-                            // Current sign overlay at bottom of camera
-                            Positioned(
-                              bottom: 0, left: 0, right: 0,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    vertical: 12, horizontal: 16),
-                                decoration: const BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.bottomCenter,
-                                    end: Alignment.topCenter,
-                                    colors: [Colors.black87, Colors.transparent],
-                                  ),
-                                ),
-                                child: Consumer<SignClassifierService>(
-                                  builder: (_, svc, __) => Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        svc.currentSign ?? 'Waiting for sign...',
-                                        style: TextStyle(
-                                          color: svc.currentSign != null
-                                              ? Colors.white
-                                              : Colors.white54,
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.bold,
-                                          letterSpacing: 2,
-                                        ),
-                                      ),
-                                      if (svc.currentSign != null) ...[
-                                        const SizedBox(width: 12),
-                                        // Confidence bar
-                                        SizedBox(
-                                          width: 60,
-                                          child: LinearProgressIndicator(
-                                            value: svc.currentConfidence,
-                                            color: const Color(0xFF6B5CE7),
-                                            backgroundColor: Colors.white24,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          '${(svc.currentConfidence * 100).toInt()}%',
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      : Container(
-                          color: const Color(0xFF1A1A2E),
-                          child: const Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              CircularProgressIndicator(color: Color(0xFF6B5CE7)),
-                              SizedBox(height: 12),
-                              Text('Starting camera...',
-                                  style: TextStyle(color: Colors.white54)),
-                            ],
-                          ),
-                        ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            // ── Gloss buffer ───────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A2E),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      body: DotGridBackground(
+        dotColor: theme.colorScheme.outline,
+        child: SafeArea(
+          child: Column(
+            children: [
+              // ── Header ─────────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: Row(
                   children: [
-                    Row(
-                      children: [
-                        Text(
-                          'ISL GLOSS',
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 10,
-                            letterSpacing: 1.5,
-                          ),
-                        ),
-                        const Spacer(),
-                        // Undo button
-                        GestureDetector(
-                          onTap: _undoLast,
-                          child: const Text(
-                            'Undo',
-                            style: TextStyle(
-                              color: Color(0xFF6B5CE7),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ],
+                    Text(
+                      'ISL LIVE',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        color: theme.colorScheme.onSurface,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2.0,
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    // Scrollable chip row of detected signs
-                    _glossBuffer.isEmpty
-                        ? const Text(
-                            'Start signing...',
-                            style: TextStyle(
-                              color: Colors.white38,
-                              fontSize: 16,
-                              letterSpacing: 1,
-                            ),
-                          )
-                        : Wrap(
-                            spacing: 8,
-                            runSpacing: 6,
-                            children: _glossBuffer
-                                .asMap()
-                                .entries
-                                .map((e) => _GlossChip(
-                                      word: e.value,
-                                      isLast:
-                                          e.key == _glossBuffer.length - 1,
-                                    ))
-                                .toList(),
+                    const SizedBox(width: 10),
+                    Consumer<SignClassifierService>(
+                      builder: (_, svc, __) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: svc.isReady
+                              ? const Color(0xFF4CAF50)
+                              : const Color(0xFFFFD600),
+                          borderRadius: BorderRadius.circular(AppThemes.cornerRadius),
+                          border: AppThemes.neoBorder(theme),
+                        ),
+                        child: Text(
+                          svc.isReady ? '● READY' : '○ LOADING',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            color: Colors.black,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.0,
                           ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ),
 
-            const SizedBox(height: 8),
+              const SizedBox(height: 12),
 
-            // ── English output ─────────────────────────────────────────────
-            if (_englishOutput.isNotEmpty)
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.black26,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                        color: const Color(0xFF6B5CE7), width: 1.2),
+              // ── Camera preview ─────────────────────────────────────────────
+              Expanded(
+                flex: 5,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Container(
+                    decoration: AppThemes.neoDecoration(theme, color: Colors.black),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(AppThemes.cornerRadius),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          if (_cameraReady && _camera != null)
+                            CameraPreview(_camera!)
+                          else
+                            Center(
+                              child: Text(
+                                'STARTING CAMERA...',
+                                style: TextStyle(
+                                  fontFamily: 'Inter',
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.5,
+                                ),
+                              ),
+                            ),
+
+                          // Corner reticles
+                          Positioned.fill(
+                            child: CustomPaint(
+                              painter: CornerReticlesPainter(
+                                color: Colors.white,
+                                strokeWidth: 3.0,
+                              ),
+                            ),
+                          ),
+
+                          // Current sign overlay — solid bar at bottom
+                          Positioned(
+                            bottom: 0, left: 0, right: 0,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 12, horizontal: 16),
+                              color: Colors.black.withValues(alpha: 0.8),
+                              child: Consumer<SignClassifierService>(
+                                builder: (_, svc, __) => Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      (svc.currentSign ?? 'WAITING...').toUpperCase(),
+                                      style: TextStyle(
+                                        fontFamily: 'Inter',
+                                        color: svc.currentSign != null
+                                            ? Colors.white
+                                            : Colors.white54,
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 2,
+                                      ),
+                                    ),
+                                    if (svc.currentSign != null) ...[
+                                      const SizedBox(width: 12),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: theme.colorScheme.primary,
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(color: Colors.white, width: 2),
+                                        ),
+                                        child: Text(
+                                          '${(svc.currentConfidence * 100).toInt()}%',
+                                          style: const TextStyle(
+                                            fontFamily: 'Inter',
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ── Gloss buffer ───────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: NeoContainer(
+                  padding: const EdgeInsets.all(14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'ENGLISH OUTPUT',
-                        style: TextStyle(
-                          color: Color(0xFF6B5CE7),
-                          fontSize: 10,
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _englishOutput,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      if (_structureNote.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          '(${ _structureNote})',
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 11,
-                            fontStyle: FontStyle.italic,
+                      Row(
+                        children: [
+                          Text(
+                            'ISL GLOSS',
+                            style: AppThemes.labelCaps(theme),
                           ),
-                        ),
-                      ],
+                          const Spacer(),
+                          // Undo button
+                          GestureDetector(
+                            onTap: _undoLast,
+                            child: Text(
+                              'UNDO',
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                color: theme.colorScheme.primary,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.0,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      // Chip row of detected signs
+                      _glossBuffer.isEmpty
+                          ? Text(
+                              'START SIGNING...',
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                color: theme.colorScheme.onSurfaceVariant,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.5,
+                              ),
+                            )
+                          : Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              children: _glossBuffer
+                                  .asMap()
+                                  .entries
+                                  .map((e) => NeoChip(
+                                        label: e.value,
+                                        isActive: e.key == _glossBuffer.length - 1,
+                                      ))
+                                  .toList(),
+                            ),
                     ],
                   ),
                 ),
               ),
 
-            const SizedBox(height: 10),
+              const SizedBox(height: 8),
 
-            // ── Action buttons ─────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: ElevatedButton.icon(
-                      onPressed: _glossBuffer.isNotEmpty ? _translate : null,
-                      icon: const Text('🤟'),
-                      label: const Text('Translate'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6B5CE7),
-                        disabledBackgroundColor: Colors.white10,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+              // ── English output ─────────────────────────────────────────────
+              if (_englishOutput.isNotEmpty)
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: NeoContainer(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'ENGLISH OUTPUT',
+                          style: AppThemes.labelCaps(theme).copyWith(
+                            color: theme.colorScheme.primary,
+                          ),
                         ),
-                        textStyle: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
+                        const SizedBox(height: 6),
+                        Text(
+                          _englishOutput,
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            color: theme.colorScheme.onSurface,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (_structureNote.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            '(${_structureNote})',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              color: theme.colorScheme.onSurfaceVariant,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 10),
+
+              // ── Action buttons ─────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          boxShadow: AppThemes.neoShadow(theme),
+                        ),
+                        child: ElevatedButton.icon(
+                          onPressed: _glossBuffer.isNotEmpty ? _translate : null,
+                          icon: const Text('🤟'),
+                          label: const Text('TRANSLATE'),
+                          style: ElevatedButton.styleFrom(
+                            disabledBackgroundColor: theme.colorScheme.surface,
+                            disabledForegroundColor: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 1,
-                    child: OutlinedButton(
-                      onPressed: _clear,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white70,
-                        side: const BorderSide(color: Colors.white24),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 1,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          boxShadow: AppThemes.neoShadow(theme),
+                        ),
+                        child: OutlinedButton(
+                          onPressed: _clear,
+                          child: const Text('CLEAR'),
                         ),
                       ),
-                      child: const Text('Clear'),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Small chip widget for each detected gloss word ────────────────────────────
-class _GlossChip extends StatelessWidget {
-  final String word;
-  final bool isLast;
-  const _GlossChip({required this.word, required this.isLast});
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: isLast
-            ? const Color(0xFF6B5CE7).withValues(alpha: 0.25)
-            : Colors.white10,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isLast ? const Color(0xFF6B5CE7) : Colors.white12,
-          width: isLast ? 1.5 : 0.5,
-        ),
-      ),
-      child: Text(
-        word,
-        style: TextStyle(
-          color: isLast ? Colors.white : Colors.white70,
-          fontSize: 13,
-          fontWeight: isLast ? FontWeight.w600 : FontWeight.normal,
-          letterSpacing: 1,
+            ],
+          ),
         ),
       ),
     );

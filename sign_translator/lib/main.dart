@@ -34,7 +34,7 @@ class ISLApp extends StatelessWidget {
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
         return MaterialApp(
-          title: 'ISL Translator',
+          title: 'Ishara',
           debugShowCheckedModeBanner: false,
           theme: themeProvider.themeData,
           navigatorObservers: [routeObserver],

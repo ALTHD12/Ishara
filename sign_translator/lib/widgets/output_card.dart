@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_themes.dart';
 
 class OutputCard extends StatelessWidget {
   final String title;
@@ -14,34 +15,31 @@ class OutputCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: backgroundColor ?? Theme.of(context).colorScheme.surfaceContainerHighest,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+    final theme = Theme.of(context);
+    return Container(
       margin: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
+      padding: const EdgeInsets.all(20.0),
+      decoration: AppThemes.neoDecoration(theme, color: backgroundColor),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.toUpperCase(),
+            style: AppThemes.labelCaps(theme).copyWith(
+              color: theme.colorScheme.primary,
             ),
-            const SizedBox(height: 8),
-            Text(
-              content,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontSize: 18,
-                  ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            content,
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: theme.colorScheme.onSurface,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

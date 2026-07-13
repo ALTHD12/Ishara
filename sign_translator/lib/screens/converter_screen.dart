@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../services/isl_converter_service.dart';
+import '../theme/app_themes.dart';
+import '../widgets/neo_decorations.dart';
 
 class ConverterScreen extends StatefulWidget {
   const ConverterScreen({super.key});
@@ -47,50 +49,55 @@ class _ConverterScreenState extends State<ConverterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final isWide = MediaQuery.of(context).size.width > 680;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D12),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Header ───────────────────────────────────────────────────
-              const Text(
-                'ISL Semantic Converter',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
+      body: DotGridBackground(
+        dotColor: theme.colorScheme.outline,
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Header ───────────────────────────────────────────────────
+                Text(
+                  'ISL SEMANTIC CONVERTER',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    color: theme.colorScheme.onSurface,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2.0,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Convert between English sentences and ISL Gloss syntax structure',
-                style: TextStyle(color: Colors.grey[500], fontSize: 13),
-              ),
-              const SizedBox(height: 24),
+                const SizedBox(height: 4),
+                Text(
+                  'CONVERT BETWEEN ENGLISH SENTENCES AND ISL GLOSS SYNTAX',
+                  style: AppThemes.labelCaps(theme),
+                ),
+                const SizedBox(height: 24),
 
-              // ── Main layout ───────────────────────────────────────────────
-              isWide
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(child: _buildInputPanel()),
-                        const SizedBox(width: 20),
-                        Expanded(child: _buildOutputPanel()),
-                      ],
-                    )
-                  : Column(
-                      children: [
-                        _buildInputPanel(),
-                        const SizedBox(height: 16),
-                        _buildOutputPanel(),
-                      ],
-                    ),
-            ],
+                // ── Main layout ───────────────────────────────────────────────
+                isWide
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: _buildInputPanel(theme)),
+                          const SizedBox(width: 20),
+                          Expanded(child: _buildOutputPanel(theme)),
+                        ],
+                      )
+                    : Column(
+                        children: [
+                          _buildInputPanel(theme),
+                          const SizedBox(height: 16),
+                          _buildOutputPanel(theme),
+                        ],
+                      ),
+              ],
+            ),
           ),
         ),
       ),
@@ -98,34 +105,29 @@ class _ConverterScreenState extends State<ConverterScreen> {
   }
 
   // ── Left panel: mode toggle + text input + button ─────────────────────────
-  Widget _buildInputPanel() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withOpacity(0.07)),
-      ),
+  Widget _buildInputPanel(ThemeData theme) {
+    return NeoContainer(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Mode toggle tabs
+          // Mode toggle — neobrutalism boxy tabs
           Container(
-            decoration: BoxDecoration(
-              color: Colors.black45,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            padding: const EdgeInsets.all(3),
+            decoration: AppThemes.neoDecorationFlat(theme),
             child: Row(
               children: [
                 _ModeTab(
-                  label: 'English → ISL',
+                  label: 'ENGLISH → ISL',
                   selected: _englishToISL,
                   onTap: () => _setMode(true),
                 ),
+                Container(
+                  width: AppThemes.borderWidth,
+                  height: 40,
+                  color: theme.colorScheme.outline,
+                ),
                 _ModeTab(
-                  label: 'ISL → English',
+                  label: 'ISL → ENGLISH',
                   selected: !_englishToISL,
                   onTap: () => _setMode(false),
                 ),
@@ -136,63 +138,52 @@ class _ConverterScreenState extends State<ConverterScreen> {
 
           // Input label
           Text(
-            _englishToISL ? 'English Sentence Input' : 'ISL Gloss Input',
-            style: TextStyle(color: Colors.grey[300], fontSize: 13),
+            _englishToISL ? 'ENGLISH SENTENCE INPUT' : 'ISL GLOSS INPUT',
+            style: AppThemes.labelCaps(theme),
           ),
           const SizedBox(height: 8),
 
-          // Text field
-          TextField(
-            controller: _inputCtrl,
-            maxLength: 200,
-            maxLines: 4,
-            onSubmitted: (_) => _convert(),
-            style: const TextStyle(color: Colors.white, fontSize: 15),
-            decoration: InputDecoration(
-              counterStyle: TextStyle(color: Colors.grey[600]),
-              hintText: _englishToISL
-                  ? 'e.g. Can you help me?'
-                  : 'e.g. YOU ME HELP',
-              hintStyle: TextStyle(color: Colors.grey[700]),
-              filled: true,
-              fillColor: Colors.black26,
-              contentPadding: const EdgeInsets.all(14),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Colors.white12),
+          // Text field — neobrutalism
+          Container(
+            decoration: BoxDecoration(
+              boxShadow: AppThemes.neoShadow(theme),
+            ),
+            child: TextField(
+              controller: _inputCtrl,
+              maxLength: 200,
+              maxLines: 4,
+              onSubmitted: (_) => _convert(),
+              style: TextStyle(
+                fontFamily: 'Inter',
+                color: theme.colorScheme.onSurface,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Colors.white12),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(
-                  color: Color(0xFF6B5CE7), width: 1.5),
+              decoration: InputDecoration(
+                counterStyle: TextStyle(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+                hintText: _englishToISL
+                    ? 'E.G. CAN YOU HELP ME?'
+                    : 'E.G. YOU ME HELP',
               ),
             ),
           ),
           const SizedBox(height: 14),
 
-          // Convert button
+          // Convert button — neobrutalism
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _convert,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6B5CE7),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
+            child: Container(
+              decoration: BoxDecoration(
+                boxShadow: AppThemes.neoShadow(theme),
               ),
-              child: Text(
-                _englishToISL ? '🤟  Convert to ISL' : '🤟  Convert to English',
+              child: ElevatedButton(
+                onPressed: _convert,
+                child: Text(
+                  _englishToISL ? '🤟  CONVERT TO ISL' : '🤟  CONVERT TO ENGLISH',
+                ),
               ),
             ),
           ),
@@ -202,22 +193,12 @@ class _ConverterScreenState extends State<ConverterScreen> {
   }
 
   // ── Right panel: output card + token analysis ─────────────────────────────
-  Widget _buildOutputPanel() {
+  Widget _buildOutputPanel(ThemeData theme) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Output card (the big bordered box from screenshots)
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            color: Colors.black12,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: const Color(0xFF6B5CE7),
-              width: 1.5,
-            ),
-          ),
+        // Output card — neobrutalism bordered
+        NeoContainer(
           child: Column(
             children: [
               Row(
@@ -227,11 +208,8 @@ class _ConverterScreenState extends State<ConverterScreen> {
                     _englishToISL
                         ? 'ISL GLOSS OUTPUT'
                         : 'ENGLISH SENTENCE OUTPUT',
-                    style: const TextStyle(
-                      color: Color(0xFF6B5CE7),
-                      fontSize: 11,
-                      letterSpacing: 1.8,
-                      fontWeight: FontWeight.w600,
+                    style: AppThemes.labelCaps(theme).copyWith(
+                      color: theme.colorScheme.primary,
                     ),
                   ),
                   if (_result != null)
@@ -244,10 +222,11 @@ class _ConverterScreenState extends State<ConverterScreen> {
               Text(
                 _result?.output ?? '—',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  color: theme.colorScheme.onSurface,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
                   letterSpacing: 1,
                 ),
               ),
@@ -258,9 +237,10 @@ class _ConverterScreenState extends State<ConverterScreen> {
                   '(${_result!.structureNote})',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.grey[600],
+                    fontFamily: 'Inter',
+                    color: theme.colorScheme.onSurfaceVariant,
                     fontSize: 12,
-                    fontStyle: FontStyle.italic,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -271,30 +251,24 @@ class _ConverterScreenState extends State<ConverterScreen> {
         // Token analysis panel
         if (_result != null) ...[
           const SizedBox(height: 14),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1A1A2E),
-              borderRadius: BorderRadius.circular(18),
-              border:
-                  Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1)),
-            ),
+          NeoContainer(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   _englishToISL
-                      ? 'ISL Structure Analysis'
-                      : 'ISL Token Analysis',
-                  style: const TextStyle(
-                    color: Colors.white,
+                      ? 'ISL STRUCTURE ANALYSIS'
+                      : 'ISL TOKEN ANALYSIS',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    color: theme.colorScheme.onSurface,
                     fontSize: 15,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.0,
                   ),
                 ),
                 const SizedBox(height: 14),
-                ..._result!.tokens.map(_buildTokenRow),
+                ..._result!.tokens.map((token) => _buildTokenRow(token, theme)),
               ],
             ),
           ),
@@ -303,15 +277,15 @@ class _ConverterScreenState extends State<ConverterScreen> {
     );
   }
 
-  Widget _buildTokenRow(ISLToken token) {
+  Widget _buildTokenRow(ISLToken token, ThemeData theme) {
     final color = Color(token.colorHex);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
-          // Coloured left bar (matches the design in screenshots)
+          // Coloured left bar
           Container(
-            width: 3,
+            width: 4,
             height: 40,
             decoration: BoxDecoration(
               color: color,
@@ -321,21 +295,31 @@ class _ConverterScreenState extends State<ConverterScreen> {
           const SizedBox(width: 14),
           Expanded(
             child: Text(
-              token.gloss,
-              style: const TextStyle(
-                color: Colors.white,
+              token.gloss.toUpperCase(),
+              style: TextStyle(
+                fontFamily: 'Inter',
+                color: theme.colorScheme.onSurface,
                 fontSize: 15,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ),
-          Text(
-            token.role,
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.8,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: color, width: 2),
+            ),
+            child: Text(
+              token.role,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.8,
+              ),
             ),
           ),
         ],
@@ -355,24 +339,25 @@ class _ModeTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFF6B5CE7) : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
+            color: selected ? theme.colorScheme.onSurface : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppThemes.cornerRadius - 2),
           ),
           child: Text(
             label,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: selected ? Colors.white : Colors.grey[500],
-              fontSize: 13,
-              fontWeight:
-                  selected ? FontWeight.w600 : FontWeight.normal,
+              fontFamily: 'Inter',
+              color: selected ? theme.colorScheme.surface : theme.colorScheme.onSurfaceVariant,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.8,
             ),
           ),
         ),
@@ -387,12 +372,13 @@ class _CopyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return GestureDetector(
       onTap: () {
         Clipboard.setData(ClipboardData(text: text));
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Copied to clipboard'),
+            content: Text('COPIED TO CLIPBOARD'),
             duration: Duration(seconds: 1),
             behavior: SnackBarBehavior.floating,
           ),
@@ -401,12 +387,18 @@ class _CopyButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.white24),
-          borderRadius: BorderRadius.circular(8),
+          border: AppThemes.neoBorder(theme),
+          borderRadius: BorderRadius.circular(AppThemes.cornerRadius),
         ),
-        child: const Text(
-          'Copy',
-          style: TextStyle(color: Colors.white60, fontSize: 12),
+        child: Text(
+          'COPY',
+          style: TextStyle(
+            fontFamily: 'Inter',
+            color: theme.colorScheme.onSurface,
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.0,
+          ),
         ),
       ),
     );

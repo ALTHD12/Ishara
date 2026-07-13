@@ -5,6 +5,7 @@ import '../services/sign_classifier_service.dart';
 import '../services/isl_converter_service.dart';
 
 import '../theme/app_themes.dart';
+import '../widgets/neo_decorations.dart';
 import 'package:flutter/foundation.dart';
 import '../main.dart'; // To access routeObserver
 
@@ -227,22 +228,21 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Camera Feed
+              // ══════════════════════════════════════════════════════════════
+              // Camera Feed — neobrutalism card with corner reticles
+              // ══════════════════════════════════════════════════════════════
               Container(
                 height: 400,
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-                ),
+                decoration: AppThemes.neoDecoration(theme, color: Colors.black),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(AppThemes.cornerRadius),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -268,7 +268,7 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
                                               leftHandNodes: classifier.leftHandNodes,
                                               rightHandNodes: classifier.rightHandNodes,
                                               isFrontCamera: _lensDirection == CameraLensDirection.front,
-                                              theme: Theme.of(context),
+                                              theme: theme,
                                             ),
                                           );
                                         },
@@ -280,32 +280,61 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
                           ),
                         )
                       else
-                        const Center(
-                          child: CircularProgressIndicator(),
+                        Center(
+                          child: Text(
+                            'LOADING CAMERA...',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.5,
+                              fontSize: 14,
+                            ),
+                          ),
                         ),
                       
-                        
-                      // Real-time confidence floating UI
+                      // Corner reticles overlay
+                      Positioned.fill(
+                        child: CustomPaint(
+                          painter: CornerReticlesPainter(
+                            color: Colors.white,
+                            strokeWidth: 3.0,
+                          ),
+                        ),
+                      ),
+
+                      // "LIVE" badge — top-left
                       if (_isTranslating)
                         Positioned(
                           top: 16,
                           left: 16,
+                          child: NeoBadge(
+                            text: 'LIVE',
+                            backgroundColor: Colors.black,
+                            textColor: Colors.white,
+                            leading: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFFF3B5C),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      // Confidence % — top-right
+                      if (_isTranslating)
+                        Positioned(
+                          top: 16,
+                          right: 16,
                           child: Consumer<SignClassifierService>(
                             builder: (context, classifier, child) {
                               if (classifier.currentSign == null) return const SizedBox.shrink();
-                              return Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: Colors.black54,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  '${classifier.currentSign} (${(classifier.currentConfidence * 100).toStringAsFixed(1)}%)',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
+                              return NeoBadge(
+                                text: '${(classifier.currentConfidence * 100).toStringAsFixed(0)}%',
+                                backgroundColor: Colors.black,
+                                textColor: Colors.white,
                               );
                             },
                           ),
@@ -322,10 +351,18 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
                                   child: Container(
                                     margin: const EdgeInsets.only(top: 60),
                                     padding: const EdgeInsets.all(8),
-                                    color: Colors.black87,
+                                    decoration: BoxDecoration(
+                                      color: Colors.black,
+                                      border: Border.all(color: const Color(0xFFFF3B5C), width: 2),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
                                     child: Text(
                                       classifier.lastDebugError,
-                                      style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                                      style: const TextStyle(
+                                        color: Color(0xFFFF3B5C),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                     ),
                                   ),
                                 );
@@ -335,112 +372,146 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
                           ),
                         ),
 
-                      // Camera flip button
+                      // Camera flip button — neobrutalism square button
                       Positioned(
                         bottom: 16,
                         right: 16,
-                        child: FloatingActionButton(
-                          mini: true,
-                          backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.8),
-                          foregroundColor: Theme.of(context).colorScheme.primary,
-                          onPressed: _switchCamera,
-                          child: const Icon(Icons.flip_camera_ios),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              
-              const SizedBox(height: 24),
-
-              // Action Button
-              ElevatedButton.icon(
-                onPressed: _toggleTranslation,
-                icon: Icon(_isTranslating ? Icons.stop_rounded : Icons.camera_alt),
-                label: Text(
-                  _isTranslating ? 'Stop Translating' : 'Start Translating',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isTranslating 
-                      ? Theme.of(context).colorScheme.error
-                      : Theme.of(context).colorScheme.primary,
-                  foregroundColor: _isTranslating
-                      ? Theme.of(context).colorScheme.onError
-                      : Theme.of(context).colorScheme.onPrimary,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                ),
-              ),
-              
-              const SizedBox(height: 32),
-
-              // Context Statement Card
-              Card(
-                margin: EdgeInsets.zero,
-                elevation: 0,
-                color: Theme.of(context).colorScheme.surface,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  side: BorderSide(color: Theme.of(context).colorScheme.outline),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'CONTEXT STATEMENT',
-                        style: AppThemes.labelCaps(Theme.of(context)),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _englishOutput.isNotEmpty 
-                            ? '“$_englishOutput”' 
-                            : '“Waiting for translation...”',
-                        style: AppThemes.quoteText(Theme.of(context)),
-                      ),
-                      if (_structureNote.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          _structureNote,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontSize: 12,
+                        child: GestureDetector(
+                          onTap: _switchCamera,
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: Colors.black,
+                              borderRadius: BorderRadius.circular(AppThemes.cornerRadius),
+                              border: Border.all(color: Colors.white, width: 2.5),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Colors.white,
+                                  offset: Offset(3, 3),
+                                  blurRadius: 0,
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              Icons.flip_camera_ios,
+                              color: Colors.white,
+                              size: 22,
+                            ),
                           ),
                         ),
-                      ]
+                      ),
                     ],
                   ),
                 ),
               ),
-
+              
               const SizedBox(height: 24),
 
-              // Sequence Chips Section
+              // ══════════════════════════════════════════════════════════════
+              // Action Button — neobrutalism styled
+              // ══════════════════════════════════════════════════════════════
+              Container(
+                decoration: BoxDecoration(
+                  boxShadow: AppThemes.neoShadow(theme),
+                ),
+                child: ElevatedButton.icon(
+                  onPressed: _toggleTranslation,
+                  icon: Icon(
+                    _isTranslating ? Icons.close : Icons.camera_alt,
+                    size: 22,
+                  ),
+                  label: Text(
+                    _isTranslating ? 'STOP TRANSLATING' : 'START TRANSLATING',
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isTranslating 
+                        ? const Color(0xFFFF3B5C)
+                        : theme.colorScheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppThemes.cornerRadius),
+                      side: BorderSide(color: theme.colorScheme.outline, width: AppThemes.borderWidth),
+                    ),
+                  ),
+                ),
+              ),
+              
+              const SizedBox(height: 28),
+
+              // ══════════════════════════════════════════════════════════════
+              // ISL Sequence section
+              // ══════════════════════════════════════════════════════════════
               if (_glossBuffer.isNotEmpty) ...[
-                Text(
-                  'ISL SEQUENCE',
-                  style: AppThemes.labelCaps(Theme.of(context)),
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'ISL SEQUENCE',
+                      style: AppThemes.labelCaps(theme),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 8.0,
                   runSpacing: 8.0,
-                  children: _glossBuffer.map((gloss) {
-                    return Chip(
-                      label: Text(gloss),
-                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-                      labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  children: _glossBuffer.asMap().entries.map((entry) {
+                    final isLast = entry.key == _glossBuffer.length - 1;
+                    return NeoChip(
+                      label: entry.value,
+                      isActive: isLast,
                     );
                   }).toList(),
                 ),
                 const SizedBox(height: 24),
               ],
+
+              // ══════════════════════════════════════════════════════════════
+              // Context Statement Card — neobrutalism styled
+              // ══════════════════════════════════════════════════════════════
+              NeoContainer(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'CONTEXT STATEMENT',
+                      style: AppThemes.labelCaps(theme),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _englishOutput.isNotEmpty 
+                          ? '\u201C$_englishOutput\u201D' 
+                          : '\u201CWaiting for translation...\u201D',
+                      style: AppThemes.quoteText(theme),
+                    ),
+                    if (_structureNote.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _structureNote,
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          color: theme.colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ]
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -448,6 +519,9 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// HolisticNodePainter — neobrutalism bold wireframe overlay
+// ══════════════════════════════════════════════════════════════════════════════
 class HolisticNodePainter extends CustomPainter {
   final List<Offset> poseNodes;
   final List<Offset> faceNodes;
@@ -467,11 +541,22 @@ class HolisticNodePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final handPointPaint = Paint()..color = theme.colorScheme.secondary..style = PaintingStyle.fill;
-    final handLinePaint = Paint()..color = theme.colorScheme.secondary.withValues(alpha: 0.7)..strokeWidth = 2.0..style = PaintingStyle.stroke;
+    // Neobrutalism: thick white lines + solid white dots on dark camera feed
+    final handPointPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    final handLinePaint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 3.5
+      ..style = PaintingStyle.stroke;
       
-    final facePointPaint = Paint()..color = theme.colorScheme.primary.withValues(alpha: 0.8)..style = PaintingStyle.fill;
-    final faceLinePaint = Paint()..color = theme.colorScheme.primary.withValues(alpha: 0.5)..strokeWidth = 1.0..style = PaintingStyle.stroke;
+    final facePointPaint = Paint()
+      ..color = theme.colorScheme.primary
+      ..style = PaintingStyle.fill;
+    final faceLinePaint = Paint()
+      ..color = theme.colorScheme.primary
+      ..strokeWidth = 2.0
+      ..style = PaintingStyle.stroke;
 
     void drawNodes(List<Offset> nodes, List<List<int>> connections, Paint pPaint, Paint lPaint, double radius) {
       if (nodes.isEmpty) return;
@@ -520,11 +605,12 @@ class HolisticNodePainter extends CustomPainter {
       [10, 338], [338, 297], [297, 332], [332, 284], [284, 251], [251, 389], [389, 356], [356, 454], [454, 323], [323, 361], [361, 288], [288, 397], [397, 365], [365, 379], [379, 378], [378, 400], [400, 377], [377, 152], [152, 148], [148, 176], [176, 149], [149, 150], [150, 136], [136, 172], [172, 58], [58, 132], [132, 93], [93, 234], [234, 127], [127, 162], [162, 21], [21, 54], [54, 103], [103, 67], [67, 109], [109, 10]
     ];
 
-    drawNodes(leftHandNodes, handConnections, handPointPaint, handLinePaint, 3.0);
-    drawNodes(rightHandNodes, handConnections, handPointPaint, handLinePaint, 3.0);
+    // Bold thick wireframe — neobrutalism diagram
+    drawNodes(leftHandNodes, handConnections, handPointPaint, handLinePaint, 5.0);
+    drawNodes(rightHandNodes, handConnections, handPointPaint, handLinePaint, 5.0);
     
-    // Draw full face mesh points for denser node visualization
-    drawNodes(faceNodes, faceConnections, facePointPaint, faceLinePaint, 0.8);
+    // Face mesh — slightly thinner but still bold
+    drawNodes(faceNodes, faceConnections, facePointPaint, faceLinePaint, 1.5);
   }
 
   @override

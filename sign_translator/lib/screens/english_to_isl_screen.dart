@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../services/isl_converter_service.dart';
 import '../widgets/output_card.dart';
 import '../widgets/signing_playback_widget.dart';
+import '../widgets/neo_decorations.dart';
 import '../theme/app_themes.dart';
 
 class EnglishToISLScreen extends StatefulWidget {
@@ -22,6 +23,9 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
   double _playbackSpeed = 1.0;
   bool _isSpeedMenuExpanded = false;
   String _originalSentence = '';
+
+  // Quick suggestion chips
+  static const _suggestions = ['Help me', 'Where is it?', 'Thank you'];
 
   @override
   void dispose() {
@@ -98,234 +102,342 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
     }
   }
 
-  Widget _buildCircleButton({
-    required Widget child,
-    required VoidCallback? onPressed,
-    bool isSelected = false,
-    bool isPrimary = false,
-  }) {
-    return ElevatedButton(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        shape: const CircleBorder(),
-        padding: EdgeInsets.all(isPrimary ? 24 : 16),
-        backgroundColor: isPrimary
-            ? Theme.of(context).colorScheme.onSurface
-            : isSelected
-                ? Theme.of(context).colorScheme.primaryContainer
-                : Theme.of(context).colorScheme.surfaceContainerHighest,
-        foregroundColor: isPrimary
-            ? Theme.of(context).scaffoldBackgroundColor
-            : isSelected
-                ? Theme.of(context).colorScheme.onPrimaryContainer
-                : Theme.of(context).colorScheme.onSurfaceVariant,
-        elevation: isPrimary ? 4 : 0,
-      ),
-      child: child,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Sentence Input Box
-          TextField(
-            controller: _textController,
-            decoration: InputDecoration(
-              hintText: 'Enter a sentence',
-              filled: true,
-              fillColor: Theme.of(context).colorScheme.surface,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.outline, width: 1),
+          // ══════════════════════════════════════════════════════════════
+          // Gloss sequence pill — bordered, active word in yellow
+          // ══════════════════════════════════════════════════════════════
+          if (_currentSequence.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: AppThemes.neoDecorationFlat(theme),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: _currentSequence.asMap().entries.map((entry) {
+                  final isActive = entry.key == _currentIndex;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (entry.key > 0)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Text(
+                            '·',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontWeight: FontWeight.w900,
+                              fontSize: 16,
+                              color: theme.colorScheme.onSurface,
+                            ),
+                          ),
+                        ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isActive ? const Color(0xFFFFD600) : Colors.transparent,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          entry.value.toUpperCase(),
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontWeight: FontWeight.w900,
+                            fontSize: 14,
+                            letterSpacing: 1.0,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }).toList(),
               ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.outline, width: 1),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide(color: Theme.of(context).colorScheme.onSurface, width: 1),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
             ),
-            style: const TextStyle(fontSize: 18),
-            onSubmitted: (_) => _translate(),
-          ),
-          const SizedBox(height: 16),
-          
-          // Translate Button
-          ElevatedButton(
-            onPressed: _translate,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              foregroundColor: Theme.of(context).colorScheme.onPrimary,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-              ),
-            ),
-            child: const Text(
-              'Translate',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            const SizedBox(height: 16),
+          ],
+
+          // ══════════════════════════════════════════════════════════════
+          // Avatar Animation Panel — neobrutalism card
+          // ══════════════════════════════════════════════════════════════
+          NeoContainer(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                // Avatar viewport
+                Container(
+                  height: 250,
+                  width: double.infinity,
+                  decoration: AppThemes.neoDecorationFlat(theme),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: SigningPlaybackWidget(
+                          sequenceAsset: 'assets/recordings/${_currentSequence.isNotEmpty ? _currentSequence[_currentIndex] : "HELLO"}.bytes',
+                          isPlaying: _isPlaying,
+                          speed: _playbackSpeed,
+                          onComplete: _onWordComplete,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Current word subtitle
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  decoration: AppThemes.neoDecorationFlat(theme),
+                  child: Center(
+                    child: Text(
+                      _currentSequence.isNotEmpty ? _currentSequence[_currentIndex].toUpperCase() : '',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        color: theme.colorScheme.onSurface,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.5,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // ══════════════════════════════════════════════════════════
+                // Transport controls — neobrutalism styled
+                // ══════════════════════════════════════════════════════════
+                AnimatedCrossFade(
+                  duration: const Duration(milliseconds: 300),
+                  crossFadeState: _isSpeedMenuExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+                  firstChild: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: AppThemes.neoDecorationFlat(theme),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Restart
+                        _buildControlButton(
+                          icon: Icons.skip_previous,
+                          onTap: _currentSequence.isNotEmpty ? _reloadAnimation : null,
+                          theme: theme,
+                        ),
+                        const SizedBox(width: 8),
+                        // Replay
+                        _buildControlButton(
+                          icon: Icons.replay,
+                          onTap: _currentSequence.isNotEmpty ? _reloadAnimation : null,
+                          theme: theme,
+                        ),
+                        const SizedBox(width: 12),
+                        // PLAY — big circle, filled black, white icon
+                        GestureDetector(
+                          onTap: _currentSequence.isNotEmpty
+                              ? () {
+                                  if (_isPlaying) {
+                                    _pauseAnimation();
+                                  } else {
+                                    _playAnimation();
+                                  }
+                                }
+                              : null,
+                          child: Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.onSurface,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: theme.colorScheme.outline,
+                                width: AppThemes.borderWidth,
+                              ),
+                              boxShadow: AppThemes.neoShadow(theme),
+                            ),
+                            child: Icon(
+                              _isPlaying ? Icons.pause : Icons.play_arrow,
+                              color: theme.colorScheme.surface,
+                              size: 30,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Fast forward
+                        _buildControlButton(
+                          icon: Icons.skip_next,
+                          onTap: _currentSequence.isNotEmpty
+                              ? () {
+                                  if (_currentIndex < _currentSequence.length - 1) {
+                                    setState(() => _currentIndex++);
+                                  }
+                                }
+                              : null,
+                          theme: theme,
+                        ),
+                        const SizedBox(width: 8),
+                        // Speed chip
+                        GestureDetector(
+                          onTap: () => setState(() => _isSpeedMenuExpanded = true),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surface,
+                              borderRadius: BorderRadius.circular(AppThemes.cornerRadius),
+                              border: AppThemes.neoBorder(theme),
+                            ),
+                            child: Text(
+                              '${_playbackSpeed}x',
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontWeight: FontWeight.w900,
+                                fontSize: 12,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  secondChild: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: AppThemes.neoDecorationFlat(theme),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: () => setState(() => _isSpeedMenuExpanded = false),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              child: Icon(
+                                Icons.close,
+                                size: 18,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          for (final speed in [0.5, 0.75, 1.0, 1.5, 2.0]) ...[
+                            GestureDetector(
+                              onTap: () => _setSpeed(speed),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: _playbackSpeed == speed 
+                                      ? theme.colorScheme.onSurface 
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(AppThemes.cornerRadius),
+                                  border: _playbackSpeed == speed
+                                      ? AppThemes.neoBorder(theme)
+                                      : null,
+                                ),
+                                child: Text(
+                                  '${speed}x',
+                                  style: TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 14,
+                                    color: _playbackSpeed == speed
+                                        ? theme.colorScheme.surface
+                                        : theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ]
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 24),
 
-          // Avatar Animation Panel
-          Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
+          // ══════════════════════════════════════════════════════════════
+          // Text Input — neobrutalism styled
+          // ══════════════════════════════════════════════════════════════
+          Container(
+            decoration: BoxDecoration(
+              boxShadow: AppThemes.neoShadow(theme),
+            ),
+            child: TextField(
+              controller: _textController,
+              decoration: InputDecoration(
+                hintText: 'ENTER A SENTENCE...',
               ),
-              color: Theme.of(context).colorScheme.surface,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    // Avatar placeholder
-                    Container(
-                      height: 250,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Theme.of(context).colorScheme.outline),
-                      ),
-                      child: Stack(
-                        children: [
-                          Positioned.fill(
-                            child: SigningPlaybackWidget(
-                              sequenceAsset: 'assets/recordings/${_currentSequence.isNotEmpty ? _currentSequence[_currentIndex] : "HELLO"}.bytes',
-                              isPlaying: _isPlaying,
-                              speed: _playbackSpeed,
-                              onComplete: _onWordComplete,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Subtitle Bar (Current word)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-                      ),
-                      child: Center(
-                        child: Text(
-                          _currentSequence.isNotEmpty ? _currentSequence[_currentIndex] : '',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1.2,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Animation Controls (Expanding Pill)
-                    AnimatedCrossFade(
-                      duration: const Duration(milliseconds: 300),
-                      crossFadeState: _isSpeedMenuExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
-                      firstChild: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _buildCircleButton(
-                            onPressed: _currentSequence.isNotEmpty ? _reloadAnimation : null,
-                            child: const Icon(Icons.replay, size: 20),
-                          ),
-                          const SizedBox(width: 16),
-                          _buildCircleButton(
-                            onPressed: _currentSequence.isNotEmpty
-                                ? () {
-                                    if (_isPlaying) {
-                                      _pauseAnimation();
-                                    } else {
-                                      _playAnimation();
-                                    }
-                                  }
-                                : null,
-                            isPrimary: true,
-                            child: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 36),
-                          ),
-                          const SizedBox(width: 16),
-                          _buildCircleButton(
-                            onPressed: () => setState(() => _isSpeedMenuExpanded = true),
-                            child: Text('${_playbackSpeed}x', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                          ),
-                        ],
-                      ),
-                      secondChild: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(30),
-                          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-                        ),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              InkWell(
-                                onTap: () => setState(() => _isSpeedMenuExpanded = false),
-                                borderRadius: BorderRadius.circular(20),
-                                child: const Padding(
-                                  padding: EdgeInsets.all(12.0),
-                                  child: Icon(Icons.circle, size: 12),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              for (final speed in [0.5, 0.75, 1.0, 1.5, 2.0]) ...[
-                                InkWell(
-                                  onTap: () => _setSpeed(speed),
-                                  borderRadius: BorderRadius.circular(20),
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 200),
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    decoration: BoxDecoration(
-                                      color: _playbackSpeed == speed 
-                                          ? Theme.of(context).colorScheme.onSurface 
-                                          : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      '${speed}x',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                        color: _playbackSpeed == speed
-                                            ? Theme.of(context).colorScheme.surface
-                                            : Theme.of(context).colorScheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                              ]
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+              onSubmitted: (_) => _translate(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // ══════════════════════════════════════════════════════════════
+          // "TRANSLATE" tap target — bold text, no button background
+          // ══════════════════════════════════════════════════════════════
+          GestureDetector(
+            onTap: _translate,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'TRANSLATE',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2.0,
+                  color: theme.colorScheme.primary,
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+          ),
+          const SizedBox(height: 8),
+
+          // ══════════════════════════════════════════════════════════════
+          // Quick suggestion chips
+          // ══════════════════════════════════════════════════════════════
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _suggestions.map((suggestion) {
+              return GestureDetector(
+                onTap: () {
+                  _textController.text = suggestion;
+                  _translate();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: AppThemes.neoDecoration(theme),
+                  child: Text(
+                    suggestion.toUpperCase(),
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                      letterSpacing: 0.8,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 24),
 
           // Natural Language Output Card
           if (_originalSentence.isNotEmpty)
@@ -334,6 +446,32 @@ class _EnglishToISLScreenState extends State<EnglishToISLScreen> {
               content: _originalSentence,
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildControlButton({
+    required IconData icon,
+    required VoidCallback? onTap,
+    required ThemeData theme,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(AppThemes.cornerRadius),
+          border: AppThemes.neoBorder(theme),
+        ),
+        child: Icon(
+          icon,
+          size: 20,
+          color: onTap != null
+              ? theme.colorScheme.onSurface
+              : theme.colorScheme.onSurfaceVariant,
+        ),
       ),
     );
   }

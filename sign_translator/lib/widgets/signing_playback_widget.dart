@@ -312,41 +312,42 @@ class _SkeletonPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final primary = theme.colorScheme.primary;
-    final accent = theme.colorScheme.tertiary;
     final surface = theme.colorScheme.onSurface;
 
-    // ---- Shadow layer (subtle depth) ----
+    // ── NEOBRUTALISM PAINTS — solid flat colors, thick strokes, no blur ──────
+    
+    // Hard offset shadow (no blur, solid)
     final shadowPaint = Paint()
-      ..color = primary.withValues(alpha: 0.08)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16);
-
-    // ---- Limb paint (thick rounded tubes) ----
-    final limbPaint = Paint()
-      ..color = primary.withValues(alpha: 0.7)
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    // ---- Torso fill ----
-    final torsoFill = Paint()
       ..color = primary.withValues(alpha: 0.15)
       ..style = PaintingStyle.fill;
 
-    // ---- Joint paint ----
-    final jointPaint = Paint()
-      ..color = surface.withValues(alpha: 0.9)
+    // Limb paint — bold thick strokes, full opacity
+    final limbPaint = Paint()
+      ..color = primary
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    // Torso fill — solid flat color
+    final torsoFill = Paint()
+      ..color = primary.withValues(alpha: 0.25)
       ..style = PaintingStyle.fill;
 
-    // ---- Face paint ----
+    // Joint paint — solid dots
+    final jointPaint = Paint()
+      ..color = surface
+      ..style = PaintingStyle.fill;
+
+    // Face paint — thick bold strokes
     final facePaint = Paint()
-      ..color = primary.withValues(alpha: 0.8)
-      ..strokeWidth = 1.8
+      ..color = primary
+      ..strokeWidth = 3.0
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    // ---- Hand paint ----
+    // Hand paint — bold, solid
     final handLinePaint = Paint()
-      ..color = theme.colorScheme.secondary.withValues(alpha: 0.7)
-      ..strokeWidth = 2.0
+      ..color = theme.colorScheme.secondary
+      ..strokeWidth = 3.5
       ..strokeCap = StrokeCap.round;
 
     final handDotPaint = Paint()
@@ -377,36 +378,35 @@ class _SkeletonPainter extends CustomPainter {
     double shoulderWidth = baseShoulderWidth * size.width * 1.05;
     final unit = shoulderWidth / 4; // proportional unit
 
-    // ---- Draw shadow silhouette first ----
+    // ── Hard shadow silhouette (offset, no blur) ────────────────────────────
     if (lShoulder != Offset.zero && rShoulder != Offset.zero) {
-      // Shadow torso
       _filledPoly(canvas, shadowPaint, [
-        lShoulder + const Offset(3, 5),
-        rShoulder + const Offset(3, 5),
-        rHip != Offset.zero ? rHip + const Offset(3, 5) : rShoulder + Offset(unit * 0.5, unit * 4),
-        lHip != Offset.zero ? lHip + const Offset(3, 5) : lShoulder + Offset(-unit * 0.5, unit * 4),
+        lShoulder + const Offset(4, 4),
+        rShoulder + const Offset(4, 4),
+        rHip != Offset.zero ? rHip + const Offset(4, 4) : rShoulder + Offset(unit * 0.5, unit * 4),
+        lHip != Offset.zero ? lHip + const Offset(4, 4) : lShoulder + Offset(-unit * 0.5, unit * 4),
       ]);
     }
 
-    // ---- Draw torso (filled quad) ----
+    // ── Torso (filled quad + bold outline) ───────────────────────────────────
     if (lShoulder != Offset.zero && rShoulder != Offset.zero) {
       final rH = rHip != Offset.zero ? rHip : rShoulder + Offset(unit * 0.5, unit * 4);
       final lH = lHip != Offset.zero ? lHip : lShoulder + Offset(-unit * 0.5, unit * 4);
       _filledPoly(canvas, torsoFill, [lShoulder, rShoulder, rH, lH]);
 
-      // Torso outline
+      // Bold torso outline — solid, no alpha
       final torsoOutline = Paint()
-        ..color = primary.withValues(alpha: 0.35)
-        ..strokeWidth = 2.0
+        ..color = primary
+        ..strokeWidth = 3.0
         ..strokeCap = StrokeCap.round
         ..style = PaintingStyle.stroke;
-      _limb(canvas, torsoOutline, lShoulder, rShoulder, 2.0);
-      _limb(canvas, torsoOutline, lShoulder, lH, 2.0);
-      _limb(canvas, torsoOutline, rShoulder, rH, 2.0);
-      _limb(canvas, torsoOutline, lH, rH, 2.0);
+      _limb(canvas, torsoOutline, lShoulder, rShoulder, 3.0);
+      _limb(canvas, torsoOutline, lShoulder, lH, 3.0);
+      _limb(canvas, torsoOutline, rShoulder, rH, 3.0);
+      _limb(canvas, torsoOutline, lH, rH, 3.0);
     }
 
-    // ---- Neck + Head ----
+    // ── Neck + Head ─────────────────────────────────────────────────────────
     if (noseTip != Offset.zero && chin != Offset.zero && forehead != Offset.zero) {
       final headCenter = Offset(
         (noseTip.dx + chin.dx + forehead.dx) / 3,
@@ -421,19 +421,19 @@ class _SkeletonPainter extends CustomPainter {
         _limb(canvas, limbPaint, neckBase, neckTop, unit * 0.6);
       }
 
-      // Head shadow
-      canvas.drawCircle(headCenter + const Offset(2, 4), headRadius, shadowPaint);
-      // Head fill
+      // Head hard shadow (offset, no blur)
+      canvas.drawCircle(headCenter + const Offset(4, 4), headRadius, shadowPaint);
+      // Head fill — solid flat
       canvas.drawCircle(headCenter, headRadius, Paint()
-        ..color = primary.withValues(alpha: 0.2)
+        ..color = primary.withValues(alpha: 0.3)
         ..style = PaintingStyle.fill);
-      // Head outline
+      // Head outline — thick bold
       canvas.drawCircle(headCenter, headRadius, Paint()
-        ..color = primary.withValues(alpha: 0.5)
-        ..strokeWidth = 2.0
+        ..color = primary
+        ..strokeWidth = 3.0
         ..style = PaintingStyle.stroke);
 
-      // ---- Face features ----
+      // ── Face features — thick bold strokes ──
       // Left eyebrow (face indices 10-14, which are 0-4 in face block)
       for (final conn in _SigningPlaybackWidgetState._leftEyebrowConns) {
         final a = _pt(10 + conn[0], size);
@@ -446,7 +446,7 @@ class _SkeletonPainter extends CustomPainter {
         final b = _pt(10 + conn[1], size);
         if (a != Offset.zero && b != Offset.zero) canvas.drawLine(a, b, facePaint);
       }
-      // Left eye (filled oval illusion)
+      // Left eye
       for (final conn in _SigningPlaybackWidgetState._leftEyeConns) {
         final a = _pt(10 + conn[0], size);
         final b = _pt(10 + conn[1], size);
@@ -462,34 +462,31 @@ class _SkeletonPainter extends CustomPainter {
       final mouthL = _pt(10 + 18, size);
       final mouthR = _pt(10 + 19, size);
       if (mouthL != Offset.zero && mouthR != Offset.zero) {
-        canvas.drawLine(mouthL, mouthR, facePaint..strokeWidth = 2.5);
+        canvas.drawLine(mouthL, mouthR, facePaint..strokeWidth = 3.5);
       }
     } else {
-      // ---- FALLBACK HEAD ----
-      // If the face landmarker failed to detect the face (often happens when zooming out or blurry),
-      // we draw a generic head proportional to the shoulders, WITH generic static features so it's not a faceless orb.
+      // ── FALLBACK HEAD ──
       if (lShoulder != Offset.zero && rShoulder != Offset.zero) {
         final neckBase = Offset((lShoulder.dx + rShoulder.dx) / 2, (lShoulder.dy + rShoulder.dy) / 2);
         final headRadius = shoulderWidth * 0.45;
-        // Head goes up from the neck. Since y goes down on screen, we subtract.
         final headCenter = Offset(neckBase.dx, neckBase.dy - headRadius * 1.5);
 
         // Neck
         _limb(canvas, limbPaint, neckBase, headCenter, unit * 0.6);
         
-        // Head shadow
-        canvas.drawCircle(headCenter + const Offset(2, 4), headRadius, shadowPaint);
-        // Head fill
+        // Head hard shadow
+        canvas.drawCircle(headCenter + const Offset(4, 4), headRadius, shadowPaint);
+        // Head fill — solid flat
         canvas.drawCircle(headCenter, headRadius, Paint()
-          ..color = primary.withValues(alpha: 0.2)
+          ..color = primary.withValues(alpha: 0.3)
           ..style = PaintingStyle.fill);
-        // Head outline
+        // Head outline — thick bold
         canvas.drawCircle(headCenter, headRadius, Paint()
-          ..color = primary.withValues(alpha: 0.5)
-          ..strokeWidth = 2.0
+          ..color = primary
+          ..strokeWidth = 3.0
           ..style = PaintingStyle.stroke);
 
-        // --- Generic Static Expression ---
+        // ── Generic static expression — bold thick strokes ──
         // Left Eye
         canvas.drawLine(
           Offset(headCenter.dx - headRadius * 0.35, headCenter.dy - headRadius * 0.1),
@@ -502,35 +499,33 @@ class _SkeletonPainter extends CustomPainter {
           Offset(headCenter.dx + headRadius * 0.35, headCenter.dy - headRadius * 0.1),
           facePaint
         );
-        // Mouth (slight generic smile)
-        final mouthPath = Path()
-          ..moveTo(headCenter.dx - headRadius * 0.25, headCenter.dy + headRadius * 0.3)
-          ..quadraticBezierTo(
-            headCenter.dx, headCenter.dy + headRadius * 0.5, 
-            headCenter.dx + headRadius * 0.25, headCenter.dy + headRadius * 0.3
-          );
-        canvas.drawPath(mouthPath, facePaint..strokeWidth = 2.0);
+        // Mouth (straight line — brutalist)
+        canvas.drawLine(
+          Offset(headCenter.dx - headRadius * 0.2, headCenter.dy + headRadius * 0.35),
+          Offset(headCenter.dx + headRadius * 0.2, headCenter.dy + headRadius * 0.35),
+          facePaint..strokeWidth = 3.0,
+        );
       }
     }
 
-    // ---- Arms (thick tapered tubes) ----
-    _limb(canvas, limbPaint, lShoulder, lElbow, unit * 0.8);
-    _limb(canvas, limbPaint, lElbow, lWrist, unit * 0.6);
-    _limb(canvas, limbPaint, rShoulder, rElbow, unit * 0.8);
-    _limb(canvas, limbPaint, rElbow, rWrist, unit * 0.6);
+    // ── Arms (bold thick tubes) ─────────────────────────────────────────────
+    _limb(canvas, limbPaint, lShoulder, lElbow, unit * 1.0);
+    _limb(canvas, limbPaint, lElbow, lWrist, unit * 0.8);
+    _limb(canvas, limbPaint, rShoulder, rElbow, unit * 1.0);
+    _limb(canvas, limbPaint, rElbow, rWrist, unit * 0.8);
 
-    // ---- Joints (circles at key points) ----
+    // ── Joints (solid circles at key points) ────────────────────────────────
     for (final pt in [lShoulder, rShoulder, lElbow, rElbow, lWrist, rWrist]) {
       if (pt != Offset.zero) {
-        canvas.drawCircle(pt, unit * 0.2, jointPaint);
+        canvas.drawCircle(pt, unit * 0.3, jointPaint);
       }
     }
 
-    // ---- Hips to Knees (if visible) ----
-    _limb(canvas, limbPaint, lHip, _pt(8, size), unit * 0.7);
-    _limb(canvas, limbPaint, rHip, _pt(9, size), unit * 0.7);
+    // ── Hips to Knees (if visible) ──────────────────────────────────────────
+    _limb(canvas, limbPaint, lHip, _pt(8, size), unit * 0.9);
+    _limb(canvas, limbPaint, rHip, _pt(9, size), unit * 0.9);
 
-    // ========== HANDS (detailed wireframe) ==========
+    // ========== HANDS (bold wireframe) ==========
     _handWireframe(canvas, handLinePaint, handDotPaint, 30, size);
     _handWireframe(canvas, handLinePaint, handDotPaint, 51, size);
   }
