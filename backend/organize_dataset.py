@@ -252,21 +252,29 @@ def main():
         description="Organize ISL dataset files into categorized folders.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  python organize_dataset.py "C:/Users/me/Downloads/new_signs"
-  python organize_dataset.py ./my_dataset --move
-  python organize_dataset.py ./my_dataset --dry-run
-  python organize_dataset.py ./my_dataset -o ./sorted_data
+INBOX MODE (recommended - paste and run):
+  1. Paste your dataset folders into:  backend/dataset_inbox/
+  2. Run with no arguments:            python organize_dataset.py
+  3. All files land in:                backend/organized_dataset/
+
+MANUAL MODE:
+  python organize_dataset.py "C:/path/to/my_dataset"
+  python organize_dataset.py "C:/path/folder1" "C:/path/folder2"
+  python organize_dataset.py "C:/path/to/folder" --move
+  python organize_dataset.py "C:/path/to/folder" --dry-run
+  python organize_dataset.py "C:/path/to/folder" -o "C:/path/to/output"
         """,
     )
     parser.add_argument(
-        "source",
-        help="Path to the folder containing dataset files to organize.",
+        "sources",
+        nargs="*",
+        help="One or more source folders to organize. "
+             "If omitted, all folders inside dataset_inbox/ are processed automatically.",
     )
     parser.add_argument(
         "-o", "--output",
         default=None,
-        help="Output directory (default: organized_dataset/ next to source).",
+        help="Output directory (default: backend/organized_dataset/).",
     )
     parser.add_argument(
         "--move",
@@ -281,16 +289,64 @@ Examples:
 
     args = parser.parse_args()
 
-    # Default output: organized_dataset/ inside the backend folder (next to this script)
-    if args.output:
-        output_dir = args.output
-    else:
-        output_dir = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "organized_dataset",
-        )
+    # Paths relative to this script (backend/)
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    inbox_dir   = os.path.join(backend_dir, "dataset_inbox")
+    output_dir  = args.output or os.path.join(backend_dir, "organized_dataset")
 
-    organize(args.source, output_dir, move=args.move, dry_run=args.dry_run)
+    # ---- Determine source folders ----
+    if args.sources:
+        # Explicit paths on the command line
+        source_dirs = [os.path.abspath(s) for s in args.sources]
+    else:
+        # INBOX MODE: auto-scan dataset_inbox/ for all pasted folders
+        if not os.path.isdir(inbox_dir):
+            print(f"[ERROR] No source given and inbox not found: {inbox_dir}")
+            print(f"        Create it, paste your dataset folders inside, then re-run.")
+            sys.exit(1)
+
+        children = sorted(os.listdir(inbox_dir))
+        source_dirs = [
+            os.path.join(inbox_dir, c)
+            for c in children
+            if os.path.isdir(os.path.join(inbox_dir, c))
+        ]
+
+        # Loose files directly in inbox -> treat inbox itself as a source too
+        loose = [
+            c for c in children
+            if os.path.isfile(os.path.join(inbox_dir, c))
+            and os.path.splitext(c)[1].lower() in SUPPORTED_EXTENSIONS
+        ]
+        if loose:
+            source_dirs = [inbox_dir] + [d for d in source_dirs if d != inbox_dir]
+
+        if not source_dirs:
+            print("[WARNING] dataset_inbox/ is empty.")
+            print(f"  Paste your dataset folders into: {inbox_dir}")
+            sys.exit(0)
+
+        print(f"[INBOX] Found {len(source_dirs)} dataset source(s) to process:")
+        for s in source_dirs:
+            print(f"  -> {os.path.basename(s)}")
+        print()
+
+    # ---- Process each source, merging into the same output dir ----
+    total = {"total": 0, "words": 0, "sentences": 0, "folders": set()}
+    for source in source_dirs:
+        stats = organize(source, output_dir, move=args.move, dry_run=args.dry_run)
+        total["total"]     += stats.get("total", 0)
+        total["words"]     += stats.get("words", 0)
+        total["sentences"] += stats.get("sentences", 0)
+        total["folders"]   |= stats.get("folders", set())
+
+    if len(source_dirs) > 1:
+        print("=" * 65)
+        print(f"  GRAND TOTAL : {total['total']} files from {len(source_dirs)} sources")
+        print(f"  Word files  : {total['words']} -> {len(total['folders'])} folders")
+        print(f"  Sentences   : {total['sentences']} -> _sentences/")
+        print(f"  Output      : {output_dir}")
+        print("=" * 65)
 
 
 if __name__ == "__main__":
