@@ -281,12 +281,12 @@ Examples:
 
     args = parser.parse_args()
 
-    # Default output: organized_dataset/ inside the backend folder
+    # Default output: organized_dataset/ inside the backend folder (next to this script)
     if args.output:
         output_dir = args.output
     else:
         output_dir = os.path.join(
-            os.path.dirname(os.path.abspath(args.source)),
+            os.path.dirname(os.path.abspath(__file__)),
             "organized_dataset",
         )
 
