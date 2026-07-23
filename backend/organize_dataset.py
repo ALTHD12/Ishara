@@ -95,14 +95,30 @@ def make_unique_path(dest_path: str) -> str:
 # Core organizer
 # ---------------------------------------------------------------------------
 def scan_source(source_dir: str) -> list:
-    """Walk through source_dir and collect all supported files (non-recursive
-    at the top level, but recursive into subdirectories)."""
+    """Walk through source_dir and collect all supported files.
+
+    Returns a list of (absolute_filepath, subfolder_label_or_None).
+    - If the file is directly in source_dir root -> label is None (classify by filename)
+    - If the file is inside a direct subdirectory of source_dir -> label is that
+      subdirectory's name (used as the category regardless of filename)
+    - Deeper nesting uses the first-level subdirectory name as the label.
+    """
     collected = []
     for root, _dirs, files in os.walk(source_dir):
+        # Determine the first-level subfolder name relative to source_dir
+        rel = os.path.relpath(root, source_dir)
+        if rel == ".":
+            # Files directly in source_dir root — classify by filename
+            subfolder_label = None
+        else:
+            # Use only the top-level subfolder name as the label
+            # e.g. source/HELLO/session1/take.mp4 -> label = 'HELLO'
+            subfolder_label = rel.split(os.sep)[0]
+
         for f in files:
             ext = os.path.splitext(f)[1].lower()
             if ext in SUPPORTED_EXTENSIONS:
-                collected.append(os.path.join(root, f))
+                collected.append((os.path.join(root, f), subfolder_label))
     return collected
 
 
@@ -119,22 +135,31 @@ def organize(source_dir: str, output_dir: str, move: bool = False,
         print(f"[ERROR] Source folder does not exist: {source_dir}")
         sys.exit(1)
 
-    files = scan_source(source_dir)
-    if not files:
+    file_entries = scan_source(source_dir)
+    if not file_entries:
         print(f"[WARNING] No supported files found in: {source_dir}")
         print(f"  Supported extensions: {', '.join(sorted(SUPPORTED_EXTENSIONS))}")
         return {"total": 0, "words": 0, "sentences": 0, "folders": set()}
 
     # ---- Classify every file ----
     plan = []  # list of (src_path, dest_folder, dest_filename)
-    for filepath in files:
+    for filepath, subfolder_label in file_entries:
         filename = os.path.basename(filepath)
-        stem = get_name_without_extension(filename)
 
-        if is_sentence(stem):
-            dest_folder = SENTENCES_FOLDER
+        if subfolder_label is not None:
+            # File lives inside a named subfolder — use that folder name as label.
+            # Normalize to UPPERCASE; treat multi-word folder names as sentences.
+            if is_sentence(subfolder_label):
+                dest_folder = SENTENCES_FOLDER
+            else:
+                dest_folder = get_canonical_folder(subfolder_label)
         else:
-            dest_folder = get_canonical_folder(stem)
+            # File is in the root of source_dir — classify by filename.
+            stem = get_name_without_extension(filename)
+            if is_sentence(stem):
+                dest_folder = SENTENCES_FOLDER
+            else:
+                dest_folder = get_canonical_folder(stem)
 
         plan.append((filepath, dest_folder, filename))
 
@@ -152,7 +177,7 @@ def organize(source_dir: str, output_dir: str, move: bool = False,
     print("=" * 65)
     print(f"  Source : {source_dir}")
     print(f"  Output : {output_dir}")
-    print(f"  Files  : {len(files)} found")
+    print(f"  Files  : {len(file_entries)} found")
     print("-" * 65)
 
     # Sort folders: word folders alphabetically, _sentences last
@@ -180,14 +205,14 @@ def organize(source_dir: str, output_dir: str, move: bool = False,
     print(f"  Summary: {word_count} word files -> {len(sorted_folders) - (1 if sentence_count else 0)} folders")
     if sentence_count:
         print(f"           {sentence_count} sentence files -> {SENTENCES_FOLDER}/")
-    print(f"  Total  : {len(files)} files")
+    print(f"  Total  : {len(file_entries)} files")
     print("=" * 65)
 
     # ---- Execute ----
     if dry_run:
         print("\n  [OK] Dry run complete - no files were changed.\n")
         return {
-            "total": len(files),
+            "total": len(file_entries),
             "words": word_count,
             "sentences": sentence_count,
             "folders": set(f for f in sorted_folders if f != SENTENCES_FOLDER),
@@ -212,7 +237,7 @@ def organize(source_dir: str, output_dir: str, move: bool = False,
     print(f"\n  [OK] Done! {transferred} files {action_past} to {output_dir}\n")
 
     return {
-        "total": len(files),
+        "total": len(file_entries),
         "words": word_count,
         "sentences": sentence_count,
         "folders": set(f for f in sorted_folders if f != SENTENCES_FOLDER),
