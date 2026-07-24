@@ -51,21 +51,26 @@ HEAD_INDICES = [1, 152, 10]  # nose tip, chin, forehead
 def setup_landmarkers():
     """Create MediaPipe Tasks landmarkers using the same .task files the project already has."""
     BaseOptions = mp.tasks.BaseOptions
+    
+    # Resolve the models/ directory path relative to this script
+    # The script is in backend/ — models are in sign_translator/assets/models/
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    models_dir = os.path.join(os.path.dirname(script_dir), "sign_translator", "assets", "models")
 
     pose = mp.tasks.vision.PoseLandmarker.create_from_options(
         mp.tasks.vision.PoseLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path='pose_landmarker.task'),
+            base_options=BaseOptions(model_asset_path=os.path.join(models_dir, 'pose_landmarker_lite.task')),
             running_mode=mp.tasks.vision.RunningMode.IMAGE))
 
     hands = mp.tasks.vision.HandLandmarker.create_from_options(
         mp.tasks.vision.HandLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path='hand_landmarker.task'),
-            num_hands=2,
-            running_mode=mp.tasks.vision.RunningMode.IMAGE))
+            base_options=BaseOptions(model_asset_path=os.path.join(models_dir, 'hand_landmarker.task')),
+            running_mode=mp.tasks.vision.RunningMode.IMAGE,
+            num_hands=2))
 
     face = mp.tasks.vision.FaceLandmarker.create_from_options(
         mp.tasks.vision.FaceLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path='face_landmarker.task'),
+            base_options=BaseOptions(model_asset_path=os.path.join(models_dir, 'face_landmarker.task')),
             running_mode=mp.tasks.vision.RunningMode.IMAGE))
 
     return pose, hands, face

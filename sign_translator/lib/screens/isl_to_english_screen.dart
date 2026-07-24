@@ -122,7 +122,7 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
 
     _camera = CameraController(
       cam,
-      ResolutionPreset.medium,
+      ResolutionPreset.low,
       enableAudio: false,
     );
 

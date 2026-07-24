@@ -26,9 +26,9 @@ def load_ml_model():
         model = load_model(MODEL_PATH)
         with open(CLASSES_PATH, "r") as f:
             classes = json.load(f)
-        print(f"✅ Loaded ML model with classes: {classes}")
+        print(f"[OK] Loaded ML model with classes: {classes}")
     else:
-        print("⚠️ No trained ML model found. Run ai/bilstm_model.py first.")
+        print("[WARN] No trained ML model found. Run ai/bilstm_model.py first.")
 
 load_ml_model()
 
@@ -118,7 +118,7 @@ def extract_342_features(data):
     ])
 
 def train_model_thread():
-    print("🚀 Starting background training...")
+    print("[INFO] Starting background training...")
     env = os.environ.copy()
     env["MPLBACKEND"] = "Agg" 
     import sys
@@ -127,11 +127,11 @@ def train_model_thread():
     # We use a global mechanism to pass back the status to the websocket loop
     # We'll just attach it to the router or process state since websocket objects are local
     if result.returncode == 0:
-        print("✅ Training complete. Reloading model...")
+        print("[OK] Training complete. Reloading model...")
         load_ml_model()
         return True
     else:
-        print("❌ Training failed.")
+        print("[ERROR] Training failed.")
         return False
 
 router = APIRouter()
@@ -336,9 +336,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         if getattr(websocket, 'training_finished', False):
                             recording_state = "idle"
                             if getattr(websocket, 'training_success', False):
-                                status_msg = "✅ Training Complete! Model Reloaded."
+                                status_msg = "Training Complete! Model Reloaded."
                             else:
-                                status_msg = "❌ Training Failed! You need at least 2 signs recorded."
+                                status_msg = "Training Failed! You need at least 2 signs recorded."
                                 
                             websocket.training_finished = False # reset flag
                         else:
