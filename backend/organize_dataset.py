@@ -94,7 +94,12 @@ def make_unique_path(dest_path: str) -> str:
 # ---------------------------------------------------------------------------
 # Core organizer
 # ---------------------------------------------------------------------------
-def scan_source(source_dir: str) -> list:
+
+# Folder names to always skip (case-insensitive) when scanning sources
+SKIP_FOLDER_NAMES = {"organized_dataset", "dataset_inbox", ".git", "__pycache__", "venv", ".venv"}
+
+
+def scan_source(source_dir: str, output_dir: str = None) -> list:
     """Walk through source_dir and collect all supported files.
 
     Returns a list of (absolute_filepath, subfolder_label_or_None).
@@ -102,18 +107,40 @@ def scan_source(source_dir: str) -> list:
     - If the file is inside a direct subdirectory of source_dir -> label is that
       subdirectory's name (used as the category regardless of filename)
     - Deeper nesting uses the first-level subdirectory name as the label.
+
+    Skips the output_dir entirely and any folders named in SKIP_FOLDER_NAMES
+    to prevent recursive self-processing.
     """
+    source_dir = os.path.abspath(source_dir)
+    output_dir = os.path.abspath(output_dir) if output_dir else None
+
     collected = []
-    for root, _dirs, files in os.walk(source_dir):
-        # Determine the first-level subfolder name relative to source_dir
-        rel = os.path.relpath(root, source_dir)
+    for root, dirs, files in os.walk(source_dir):
+        abs_root = os.path.abspath(root)
+
+        # Skip the output directory itself (and anything inside it)
+        if output_dir and (abs_root == output_dir or abs_root.startswith(output_dir + os.sep)):
+            dirs.clear()
+            continue
+
+        # Skip known system/tool folders at any level
+        rel = os.path.relpath(abs_root, source_dir)
+        top_folder = rel.split(os.sep)[0] if rel != "." else None
+        if top_folder and top_folder.lower() in SKIP_FOLDER_NAMES:
+            dirs.clear()
+            continue
+
+        # Prune dirs in-place so os.walk doesn't descend into skipped folders
+        dirs[:] = [d for d in dirs if d.lower() not in SKIP_FOLDER_NAMES]
+        if output_dir:
+            dirs[:] = [d for d in dirs
+                       if os.path.abspath(os.path.join(root, d)) != output_dir]
+
+        # Determine the first-level subfolder label relative to source_dir
         if rel == ".":
-            # Files directly in source_dir root — classify by filename
-            subfolder_label = None
+            subfolder_label = None  # file is directly in source root -> classify by filename
         else:
-            # Use only the top-level subfolder name as the label
-            # e.g. source/HELLO/session1/take.mp4 -> label = 'HELLO'
-            subfolder_label = rel.split(os.sep)[0]
+            subfolder_label = rel.split(os.sep)[0]  # top-level subfolder name is the label
 
         for f in files:
             ext = os.path.splitext(f)[1].lower()
@@ -135,7 +162,7 @@ def organize(source_dir: str, output_dir: str, move: bool = False,
         print(f"[ERROR] Source folder does not exist: {source_dir}")
         sys.exit(1)
 
-    file_entries = scan_source(source_dir)
+    file_entries = scan_source(source_dir, output_dir)
     if not file_entries:
         print(f"[WARNING] No supported files found in: {source_dir}")
         print(f"  Supported extensions: {', '.join(sorted(SUPPORTED_EXTENSIONS))}")
