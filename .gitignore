@@ -14,6 +14,13 @@ backend/.pytest_cache/
 backend/models/
 backend/*.task
 
+# Dataset folders (large video/npy files - do not commit)
+backend/organized_dataset/*
+!backend/organized_dataset/.gitkeep
+backend/dataset_inbox/*
+!backend/dataset_inbox/.gitkeep
+backend/data/training_data/
+
 # Flutter / Frontend
 Flutter/
 sign_translator/.dart_tool/

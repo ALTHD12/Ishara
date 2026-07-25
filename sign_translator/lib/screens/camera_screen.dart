@@ -54,7 +54,7 @@ class _CameraScreenState extends State<CameraScreen>
 
     _camera = CameraController(
       cam,
-      ResolutionPreset.medium, // medium = good balance speed/quality
+      ResolutionPreset.low, // low = best performance on older phones
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.yuv420, // efficient for ML processing
     );

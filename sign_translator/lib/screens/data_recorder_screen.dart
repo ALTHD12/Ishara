@@ -47,7 +47,7 @@ class _DataRecorderScreenState extends State<DataRecorderScreen> with WidgetsBin
 
     _camera = CameraController(
       cam,
-      ResolutionPreset.medium,
+      ResolutionPreset.low,
       enableAudio: false,
     );
 

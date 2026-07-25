@@ -140,7 +140,7 @@ def train_model():
     print(f"Classes: {label_encoder.classes_}")
     
     if num_classes < 2:
-        print("❌ Error: You need at least TWO different signs recorded to train a classifier!")
+        print("[ERROR] You need at least TWO different signs recorded to train a classifier!")
         sys.exit(1)
     
     # DATA AUGMENTATION DISABLED: 
