@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config/app_config.dart';
 import '../utils/camera_utils.dart';
+import '../utils/latency_stats.dart';
 
 class SignResult {
   final String sign;
@@ -42,6 +44,13 @@ class SignClassifierService extends ChangeNotifier {
 
   int _frameCounter = 0;
   bool _isProcessingFrame = false;
+
+  // ── Latency instrumentation (ISL_DEBUG_TIMING) ──
+  final Stopwatch _clock = Stopwatch()..start();
+  final LatencyStats _stats = LatencyStats('client');
+  double _tCapture = 0, _tSent = 0, _convertMs = 0, _sendMs = 0;
+  int _droppedSinceSend = 0;
+  double get _nowMs => _clock.elapsedMicroseconds / 1000.0;
 
   Future<void> loadModels() async {
     try {
@@ -86,8 +95,10 @@ class SignClassifierService extends ChangeNotifier {
 
   void _handleHolisticResponse(String jsonString) {
     _isProcessingFrame = false; // unlock for next frame
+    final tRecv = _nowMs;
     try {
       final data = jsonDecode(jsonString) as Map<String, dynamic>;
+      final tParsed = _nowMs;
       
       _poseNodes = _parseNodes(data['pose']);
       _faceNodes = _parseNodes(data['face']);
@@ -111,6 +122,31 @@ class SignClassifierService extends ChangeNotifier {
       
       _lastDebugError = '';
       notifyListeners();
+
+      if (LatencyStats.enabled && _tSent > 0) {
+        final server = (data['_t'] as Map?)?.map(
+                (k, v) => MapEntry(k as String, (v as num).toDouble())) ??
+            const <String, double>{};
+        final serverTotal = server['server_total'] ?? 0.0;
+        final rtt = tRecv - _tSent;
+        final tCapture = _tCapture;
+        final stages = <String, double>{
+          'convert': _convertMs,
+          'send': _sendMs,
+          'rtt': rtt,
+          'network+queue': rtt - serverTotal,
+          'parse': tParsed - tRecv,
+          'dropped': _droppedSinceSend.toDouble(),
+          for (final e in server.entries) 's.${e.key}': e.value,
+        };
+        // "overlay drawn" = next rasterised frame after this result
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          final tDrawn = _nowMs;
+          stages['result->drawn'] = tDrawn - tRecv;
+          stages['capture->drawn'] = tDrawn - tCapture;
+          _stats.record(stages);
+        });
+      }
     } catch(e) {
       _lastDebugError = 'JSON parse error: $e';
       notifyListeners();
@@ -126,9 +162,13 @@ class SignClassifierService extends ChangeNotifier {
   }
 
   Future<SignResult?> processFrame(CameraImage image, int sensorOrientation) async {
-    if (!_isReady || _channel == null || _isProcessingFrame) return null;
+    if (!_isReady || _channel == null || _isProcessingFrame) {
+      _droppedSinceSend++;
+      return null;
+    }
 
     _isProcessingFrame = true;
+    final tCapture = _nowMs;
 
     try {
       final rgbData = CameraUtils.yuvConverter({
@@ -148,6 +188,7 @@ class SignClassifierService extends ChangeNotifier {
         return null;
       }
 
+      final tConverted = _nowMs;
       final outWidth = rgbData['width'] as int;
       final outHeight = rgbData['height'] as int;
       final rgbBytes = rgbData['bytes'] as Uint8List;
@@ -162,6 +203,13 @@ class SignClassifierService extends ChangeNotifier {
       payload.add(rgbBytes);
       
       _channel!.sink.add(payload.toBytes());
+
+      final tSent = _nowMs;
+      _tCapture = tCapture;
+      _convertMs = tConverted - tCapture;
+      _sendMs = tSent - tConverted;
+      _tSent = tSent;
+      _droppedSinceSend = 0;
       
       return null;
     } catch (e) {

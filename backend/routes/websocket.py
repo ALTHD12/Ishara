@@ -7,6 +7,7 @@ import threading
 import subprocess
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from ai.mediapipe_model import mp_service
+from timing import DEBUG_TIMING, FrameTimer, TimingStats
 
 import tensorflow as tf
 from tensorflow.keras.models import load_model
@@ -140,6 +141,7 @@ router = APIRouter()
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("Flutter Client connected!")
+    timing_stats = TimingStats("server")
     sequence_buffer = []
     
     # Recording State Variables
@@ -192,6 +194,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
                 
             message = message_dict["bytes"]
+            timer = FrameTimer() if DEBUG_TIMING else None
             
             try:
                 if len(message) < 12:
@@ -215,8 +218,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     img_rgb = cv2.rotate(img_rgb, cv2.ROTATE_90_COUNTERCLOCKWISE)
                 elif rotation == 180:
                     img_rgb = cv2.rotate(img_rgb, cv2.ROTATE_180)
+                if timer: timer.mark("decode")
                     
-                landmarks = mp_service.process_image(img_rgb)
+                landmarks = mp_service.process_image(img_rgb, timer)
+                if timer: timer.mark("mediapipe")
                 
                 status_msg = ""
                 
@@ -295,7 +300,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                 
                                 if inf_counter % 3 == 0:
                                     input_data = np.expand_dims([f for f, _ in sequence_tuple_buffer], axis=0)
+                                    t_model = time.perf_counter()
                                     prediction = model(input_data, training=False).numpy()[0]
+                                    if timer: timer.add("model", (time.perf_counter() - t_model) * 1000.0)
                                     max_idx = np.argmax(prediction)
                                     confidence = float(prediction[max_idx])
                                     
@@ -347,7 +354,19 @@ async def websocket_endpoint(websocket: WebSocket):
                 if status_msg:
                     landmarks["recording_status"] = status_msg
                 
-                await websocket.send_text(json.dumps(landmarks))
+                if timer:
+                    timer.mark("post")  # features + smoothing (+ model)
+                    payload = json.dumps(landmarks)
+                    timer.mark("json")
+                    landmarks["_t"] = {k: round(v, 2) for k, v in timer.stages.items()}
+                    landmarks["_t"]["server_total"] = round(timer.total_ms(), 2)
+                    payload = json.dumps(landmarks)
+                    timer.stages["json_bytes_k"] = len(payload) / 1024.0
+                    await websocket.send_text(payload)
+                    timer.mark("send")
+                    timing_stats.record(timer.stages)
+                else:
+                    await websocket.send_text(json.dumps(landmarks))
                 
             except Exception as frame_error:
                 await websocket.send_text("{}")

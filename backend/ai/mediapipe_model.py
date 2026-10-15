@@ -2,6 +2,7 @@ import os
 import urllib.request
 import mediapipe as mp
 import cv2
+import time
 
 MODELS = {
     "pose_landmarker.task": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task",
@@ -71,7 +72,7 @@ class MediaPipeService:
                 
         return data
 
-    def process_image(self, img_rgb):
+    def process_image(self, img_rgb, timer=None):
         h, w, _ = img_rgb.shape
         size = max(h, w)
         pad_top = (size - h) // 2
@@ -86,9 +87,17 @@ class MediaPipeService:
         
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=squared_img)
         
+        t = time.perf_counter()
         pose_result = self.pose_landmarker.detect(mp_image)
+        t_pose = time.perf_counter()
         hand_result = self.hand_landmarker.detect(mp_image)
+        t_hand = time.perf_counter()
         face_result = self.face_landmarker.detect(mp_image)
+        t_face = time.perf_counter()
+        if timer is not None:
+            timer.add("mp_pose", (t_pose - t) * 1000.0)
+            timer.add("mp_hand", (t_hand - t_pose) * 1000.0)
+            timer.add("mp_face", (t_face - t_hand) * 1000.0)
         
         return self.extract_landmarks(
             pose_result, hand_result, face_result, 
