@@ -11,6 +11,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from ai.mediapipe_model import mp_service
 from timing import DEBUG_TIMING, FrameTimer, TimingStats
 from features import extract_342_features
+from frame_codec import packed_yuv420_to_rgb
 from live_decoder import LiveDecoder
 import live_config as LC
 
@@ -81,6 +82,15 @@ _frame_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="frame")
 # field, an 8-byte big-endian int64 capture timestamp (microseconds, client
 # monotonic clock) follows the header. Old clients never set it.
 HDR_FLAG_TIMESTAMP = 0x10000
+# Payload is packed YUV420 (Y, U, V planes; 1.5 B/px) instead of RGB; decoded
+# with the client's exact integer math -> bit-identical RGB (frame_codec.py).
+HDR_FLAG_YUV420 = 0x40000
+
+# Debug: ISL_DEBUG_SAVE_FRAMES=<dir> saves every 30th upright frame as PNG
+# (to check orientation / colour / distortion of what the phone sends).
+_SAVE_FRAMES_DIR = os.environ.get("ISL_DEBUG_SAVE_FRAMES", "")
+if _SAVE_FRAMES_DIR:
+    os.makedirs(_SAVE_FRAMES_DIR, exist_ok=True)
 
 
 def _compact_nodes(nodes):
@@ -113,14 +123,18 @@ def process_frame(st, message, t_recv, timer):
     height = int.from_bytes(message[8:12], byteorder='big')
     offset = 12
     t_frame = t_recv
-    if rotation & HDR_FLAG_TIMESTAMP:
+    flags = rotation & ~0xFFFF
+    rotation &= 0xFFFF
+    if flags & HDR_FLAG_TIMESTAMP:
         t_frame = int.from_bytes(message[12:20], byteorder='big', signed=True) / 1e6
         offset = 20
-        rotation &= 0xFFFF
     img_data = message[offset:]
 
     try:
-        img_rgb = np.frombuffer(img_data, dtype=np.uint8).reshape((height, width, 3))
+        if flags & HDR_FLAG_YUV420:
+            img_rgb = packed_yuv420_to_rgb(img_data, width, height)
+        else:
+            img_rgb = np.frombuffer(img_data, dtype=np.uint8).reshape((height, width, 3))
     except Exception:
         return {}
 
@@ -131,6 +145,11 @@ def process_frame(st, message, t_recv, timer):
     elif rotation == 180:
         img_rgb = cv2.rotate(img_rgb, cv2.ROTATE_180)
     if timer: timer.mark("decode")
+    if _SAVE_FRAMES_DIR:
+        st.saved_frame_counter = getattr(st, "saved_frame_counter", 0) + 1
+        if st.saved_frame_counter % 30 == 1:
+            cv2.imwrite(os.path.join(_SAVE_FRAMES_DIR, f"frame_{st.saved_frame_counter:05d}.png"),
+                        cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR))
 
     live = not st.is_recording_mode
     if live and LC.MEDIAPIPE_VIDEO_MODE:
