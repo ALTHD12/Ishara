@@ -1,16 +1,15 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
-import 'dart:convert';
-import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart' show WidgetsBinding, WidgetsBindingObserver, AppLifecycleState;
-import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config/app_config.dart';
-import '../utils/camera_utils.dart';
+import '../config/live_config.dart';
 import '../utils/latency_stats.dart';
+import 'frame_link.dart';
 
 class SignResult {
   final String sign;
@@ -26,19 +25,17 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // ── Connection tuning ──
-  static const Duration _connectTimeout = Duration(seconds: 4);
   static const Duration _backoffMin = Duration(milliseconds: 500);
   static const Duration _backoffMax = Duration(seconds: 8);
   static const Duration _heartbeatEvery = Duration(seconds: 2);
   /// No message at all (result or pong) for this long => link is dead.
   static const Duration _deadAfter = Duration(seconds: 6);
 
-  WebSocketChannel? _channel;
-  StreamSubscription? _sub;
+  final FrameLink _link = FrameLink();
+  StreamSubscription? _linkSub;
   Timer? _reconnectTimer;
   Timer? _heartbeatTimer;
   int _attempt = 0;
-  int _generation = 0; // invalidates callbacks from stale sockets
   bool _wantConnected = false; // a screen asked for the backend
   bool _appPaused = false;
   DateTime _lastRx = DateTime.now();
@@ -58,13 +55,20 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
   String? get currentSign        => _currentSign;
   double  get currentConfidence  => _currentConfidence;
 
+  /// Emits a word each time the server makes a new decision (event id
+  /// increases). Repeats of the same sign are allowed after the server's
+  /// cooldown.
+  final StreamController<String> _signEvents = StreamController<String>.broadcast();
+  Stream<String> get signEvents => _signEvents.stream;
+  int _lastEventId = 0;
+
   String _lastDebugError = '';
   String get lastDebugError => _lastDebugError;
 
   String _recordingStatus = '';
   String get recordingStatus => _recordingStatus;
 
-  // Holistic node visualization
+  // Holistic node visualization (latest result only)
   List<Offset> _poseNodes = [];
   List<Offset> _faceNodes = [];
   List<Offset> _leftHandNodes = [];
@@ -75,12 +79,16 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
   List<Offset> get leftHandNodes => _leftHandNodes;
   List<Offset> get rightHandNodes => _rightHandNodes;
 
-  bool _isProcessingFrame = false;
+  // ── Backpressure ──
+  bool _inFlight = false;
+  double _inFlightSinceMs = 0;
+  double _lastSendMs = -1e9;
 
   // ── Latency instrumentation (ISL_DEBUG_TIMING) ──
   final Stopwatch _clock = Stopwatch()..start();
   final LatencyStats _stats = LatencyStats('client');
-  double _tCapture = 0, _tSent = 0, _convertMs = 0, _sendMs = 0;
+  double _tCapture = 0;
+  double _handoffMs = 0;
   int _droppedSinceSend = 0;
   double get _nowMs => _clock.elapsedMicroseconds / 1000.0;
 
@@ -113,62 +121,56 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _open() async {
-    final gen = ++_generation;
     _setStatus(_attempt == 0 ? ConnectionStatus.connecting : ConnectionStatus.reconnecting);
-    final url = AppConfig.backendWsUrl;
-    try {
-      final ch = WebSocketChannel.connect(Uri.parse(url));
-      await ch.ready.timeout(_connectTimeout);
-      if (gen != _generation) { ch.sink.close(); return; } // superseded
-      _channel = ch;
-      _lastRx = DateTime.now();
-      _sub = ch.stream.listen(
-        (message) {
-          if (gen != _generation) return;
-          _lastRx = DateTime.now();
-          if (message is String) _handleHolisticResponse(message);
-        },
-        onError: (e) {
-          if (gen != _generation) return;
-          _lastDebugError = 'WebSocket error: $e';
+    await _link.start();
+    _linkSub ??= _link.events.listen(_onLinkEvent);
+    _link.connect(AppConfig.backendWsUrl);
+  }
+
+  void _onLinkEvent(List<Object?> e) {
+    switch (e[0]) {
+      case 'open':
+        _attempt = 0;
+        _isReady = true;
+        _inFlight = false;
+        _lastRx = DateTime.now();
+        _lastDebugError = '';
+        _setStatus(ConnectionStatus.connected);
+        _startHeartbeat();
+        debugPrint('Connected to backend ${AppConfig.backendWsUrl}');
+        break;
+      case 'closed':
+        if (_status == ConnectionStatus.connected || _status == ConnectionStatus.connecting ||
+            _status == ConnectionStatus.reconnecting) {
+          _lastDebugError = _status == ConnectionStatus.connected
+              ? 'Connection lost'
+              : 'Cannot reach ${AppConfig.server}';
+          debugPrint('WebSocket closed: ${e[1]}');
           _onLinkLost();
-        },
-        onDone: () {
-          if (gen != _generation) return;
-          _onLinkLost();
-        },
-        cancelOnError: true,
-      );
-      _attempt = 0;
-      _isReady = true;
-      _isProcessingFrame = false;
-      _lastDebugError = '';
-      _setStatus(ConnectionStatus.connected);
-      _startHeartbeat(gen);
-      debugPrint('Connected to backend $url');
-    } catch (e) {
-      if (gen != _generation) return;
-      _lastDebugError = 'Cannot reach $url';
-      debugPrint('WebSocket connect failed ($url): $e');
-      _onLinkLost();
+        }
+        break;
+      case 'msg':
+        _lastRx = DateTime.now();
+        final data = e[1];
+        if (data is Map) {
+          _handleResult(data.cast<String, dynamic>(), (e[2] as num).toDouble(),
+              (e[3] as num).toDouble(), (e[4] as num).toDouble(), (e[5] as num).toDouble());
+        }
+        break;
     }
   }
 
-  void _startHeartbeat(int gen) {
+  void _startHeartbeat() {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = Timer.periodic(_heartbeatEvery, (_) {
-      if (gen != _generation || _channel == null) return;
+      if (!_isReady) return;
       if (DateTime.now().difference(_lastRx) > _deadAfter) {
         _lastDebugError = 'Backend not responding';
         _onLinkLost();
         return;
       }
       _pingSentUs = _clock.elapsedMicroseconds;
-      try {
-        _channel!.sink.add('{"action":"ping"}');
-      } catch (_) {
-        _onLinkLost();
-      }
+      _link.sendText('{"action":"ping"}');
     });
   }
 
@@ -191,17 +193,11 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _closeSocket() {
-    _generation++;
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
-    _sub?.cancel();
-    _sub = null;
-    try {
-      _channel?.sink.close();
-    } catch (_) {}
-    _channel = null;
+    _link.close();
     _isReady = false;
-    _isProcessingFrame = false;
+    _inFlight = false;
   }
 
   void _setStatus(ConnectionStatus s) {
@@ -227,157 +223,136 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  void _handleHolisticResponse(String jsonString) {
+  void _handleResult(Map<String, dynamic> data, double rttMs, double convertMs,
+      double sendMs, double parseMs) {
+    if (data.containsKey('pong')) {
+      if (_pingSentUs > 0) {
+        _lastPingRtt = Duration(microseconds: _clock.elapsedMicroseconds - _pingSentUs);
+        notifyListeners();
+      }
+      return;
+    }
     final tRecv = _nowMs;
-    try {
-      final data = jsonDecode(jsonString) as Map<String, dynamic>;
-      if (data.containsKey('pong')) {
-        if (_pingSentUs > 0) {
-          _lastPingRtt = Duration(microseconds: _clock.elapsedMicroseconds - _pingSentUs);
-        }
-        return;
-      }
-      _isProcessingFrame = false; // unlock for next frame
-      final tParsed = _nowMs;
-      
-      _poseNodes = _parseNodes(data['pose']);
-      _faceNodes = _parseNodes(data['face']);
-      _leftHandNodes = _parseNodes(data['left_hand']);
-      _rightHandNodes = _parseNodes(data['right_hand']);
-      
-      // Extract Model Prediction if available
-      if (data.containsKey('sign') && data['sign'] != null) {
-        _currentSign = data['sign'] as String;
-        _currentConfidence = (data['confidence'] as num).toDouble();
-      } else {
-        _currentSign = null;
-        _currentConfidence = 0.0;
-      }
-      
-      if (data.containsKey('recording_status')) {
-        _recordingStatus = data['recording_status'] as String;
-      } else {
-        _recordingStatus = '';
-      }
-      
-      _lastDebugError = '';
-      notifyListeners();
+    _inFlight = false; // unlock for next frame
 
-      if (LatencyStats.enabled && _tSent > 0) {
-        final server = (data['_t'] as Map?)?.map(
-                (k, v) => MapEntry(k as String, (v as num).toDouble())) ??
-            const <String, double>{};
-        final serverTotal = server['server_total'] ?? 0.0;
-        final rtt = tRecv - _tSent;
-        final tCapture = _tCapture;
-        final stages = <String, double>{
-          'convert': _convertMs,
-          'send': _sendMs,
-          'rtt': rtt,
-          'network+queue': rtt - serverTotal,
-          'parse': tParsed - tRecv,
-          'dropped': _droppedSinceSend.toDouble(),
-          for (final e in server.entries) 's.${e.key}': e.value,
-        };
-        // "overlay drawn" = next rasterised frame after this result
-        SchedulerBinding.instance.addPostFrameCallback((_) {
-          final tDrawn = _nowMs;
-          stages['result->drawn'] = tDrawn - tRecv;
-          stages['capture->drawn'] = tDrawn - tCapture;
-          _stats.record(stages);
-        });
-      }
-    } catch(e) {
-      _lastDebugError = 'JSON parse error: $e';
-      notifyListeners();
+    _poseNodes = _parseNodes(data['pose']);
+    _faceNodes = _parseNodes(data['face']);
+    _leftHandNodes = _parseNodes(data['left_hand']);
+    _rightHandNodes = _parseNodes(data['right_hand']);
+
+    if (data['sign'] != null) {
+      _currentSign = data['sign'] as String;
+      _currentConfidence = (data['confidence'] as num).toDouble();
+    } else {
+      _currentSign = null;
+      _currentConfidence = 0.0;
+    }
+
+    final eid = data['eid'];
+    if (eid is int && eid > _lastEventId) {
+      _lastEventId = eid;
+      final s = data['esign'];
+      if (s is String) _signEvents.add(s);
+    }
+
+    _recordingStatus = (data['recording_status'] as String?) ?? '';
+    _lastDebugError = '';
+    notifyListeners();
+
+    if (LatencyStats.enabled) {
+      final server = (data['_t'] as Map?)?.map(
+              (k, v) => MapEntry(k as String, (v as num).toDouble())) ??
+          const <String, double>{};
+      final serverTotal = server['server_total'] ?? 0.0;
+      final tCapture = _tCapture;
+      final stages = <String, double>{
+        'ui_handoff': _handoffMs,
+        'convert(iso)': convertMs,
+        'send(iso)': sendMs,
+        'rtt': rttMs,
+        'network+queue': rttMs - serverTotal,
+        'parse(iso)': parseMs,
+        'dropped': _droppedSinceSend.toDouble(),
+        for (final e in server.entries) 's.${e.key}': e.value,
+      };
+      _droppedSinceSend = 0;
+      // "overlay drawn" = next rasterised frame after this result
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        final tDrawn = _nowMs;
+        stages['result->drawn'] = tDrawn - tRecv;
+        stages['capture->drawn'] = tDrawn - tCapture;
+        _stats.record(stages);
+      });
     }
   }
 
   List<Offset> _parseNodes(dynamic list) {
-    if (list == null) return [];
-    return (list as List).map((node) {
-      // MediaPipe Python outputs normalized coordinates [0.0, 1.0]
-      return Offset((node['x'] as num).toDouble(), (node['y'] as num).toDouble());
-    }).toList();
+    if (list == null) return const [];
+    // Compact [[x, y], ...] in normalized [0, 1] coordinates of the upright frame.
+    return [
+      for (final n in list as List)
+        if (n is List)
+          Offset((n[0] as num).toDouble(), (n[1] as num).toDouble())
+        else
+          Offset((n['x'] as num).toDouble(), (n['y'] as num).toDouble())
+    ];
   }
 
-  Future<SignResult?> processFrame(CameraImage image, int sensorOrientation) async {
-    if (!_isReady || _channel == null || _isProcessingFrame) {
+  /// Called for every camera frame. Sends at most one frame in flight and at
+  /// most [maxFps] frames/s; everything else is dropped here, cheaply.
+  Future<SignResult?> processFrame(CameraImage image, int sensorOrientation,
+      {double maxFps = LiveConfig.maxSendFps}) async {
+    if (!_isReady) return null;
+    final now = _nowMs;
+    if (_inFlight) {
+      if (now - _inFlightSinceMs < LiveConfig.resultTimeout.inMilliseconds) {
+        _droppedSinceSend++;
+        return null;
+      }
+      _inFlight = false; // result lost: don't stall forever
+    }
+    if (maxFps > 0 && now - _lastSendMs < 1000.0 / maxFps) {
       _droppedSinceSend++;
       return null;
     }
 
-    _isProcessingFrame = true;
-    final tCapture = _nowMs;
-
     try {
-      final rgbData = CameraUtils.yuvConverter({
-        'formatName': image.format.group.name,
-        'width': image.width,
-        'height': image.height,
-        'planes': image.planes.map((p) => p.bytes).toList(),
-        'yRowStride': image.planes[0].bytesPerRow,
-        'uvRowStride': image.planes.length > 1 ? image.planes[1].bytesPerRow : 0,
-        'uvPixelStride': image.planes.length > 1 ? image.planes[1].bytesPerPixel : 0,
-      });
-
-      if (rgbData == null) {
-        _lastDebugError = 'YUV Conversion failed';
-        _isProcessingFrame = false;
-        notifyListeners();
-        return null;
-      }
-
-      final tConverted = _nowMs;
-      final outWidth = rgbData['width'] as int;
-      final outHeight = rgbData['height'] as int;
-      final rgbBytes = rgbData['bytes'] as Uint8List;
-
-      final header = ByteData(12);
-      header.setInt32(0, sensorOrientation, Endian.big);
-      header.setInt32(4, outWidth, Endian.big);
-      header.setInt32(8, outHeight, Endian.big);
-      
-      final payload = BytesBuilder(copy: false);
-      payload.add(header.buffer.asUint8List());
-      payload.add(rgbBytes);
-      
-      _channel!.sink.add(payload.toBytes());
-
-      final tSent = _nowMs;
-      _tCapture = tCapture;
-      _convertMs = tConverted - tCapture;
-      _sendMs = tSent - tConverted;
-      _tSent = tSent;
-      _droppedSinceSend = 0;
-      
-      return null;
+      _inFlight = true;
+      _inFlightSinceMs = now;
+      _lastSendMs = now;
+      _tCapture = now;
+      _link.sendFrame(
+        format: image.format.group.name,
+        width: image.width,
+        height: image.height,
+        planes: [for (final p in image.planes) p.bytes],
+        yRowStride: image.planes[0].bytesPerRow,
+        uvRowStride: image.planes.length > 1 ? image.planes[1].bytesPerRow : 0,
+        uvPixelStride: image.planes.length > 1 ? (image.planes[1].bytesPerPixel ?? 1) : 0,
+        rotation: sensorOrientation,
+        captureUs: _clock.elapsedMicroseconds,
+      );
+      _handoffMs = _nowMs - now;
     } catch (e) {
       _lastDebugError = 'processFrame exception: $e';
-      _isProcessingFrame = false;
+      _inFlight = false;
       notifyListeners();
-      return null;
     }
+    return null;
   }
 
-  // Replaced by CameraUtils.yuvConverter
-
   void startContinuousRecording(String label) {
-    if (_channel != null && _isReady) {
-      final cmd = jsonEncode({
+    if (_isReady) {
+      _link.sendText(jsonEncode({
         "action": "start_continuous_recording",
         "label": label,
-      });
-      _channel!.sink.add(cmd);
+      }));
     }
   }
 
   void triggerTraining() {
-    if (_channel != null && _isReady) {
-      final cmd = jsonEncode({
-        "action": "train_model"
-      });
-      _channel!.sink.add(cmd);
+    if (_isReady) {
+      _link.sendText(jsonEncode({"action": "train_model"}));
     }
   }
 
@@ -388,6 +363,7 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
     _rightHandNodes = [];
     _currentSign = null;
     _currentConfidence = 0;
+    if (_isReady) _link.sendText('{"action":"reset"}');
     notifyListeners();
   }
 
@@ -397,6 +373,9 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
     _wantConnected = false;
     _reconnectTimer?.cancel();
     _closeSocket();
+    _linkSub?.cancel();
+    _link.dispose();
+    _signEvents.close();
     super.dispose();
   }
 }
