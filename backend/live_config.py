@@ -31,6 +31,10 @@ REPEAT_COOLDOWN_S = 1.5
 NO_HAND_CLEAR_S = 2.0
 
 # ── Frame pipeline ─────────────────────────────────────────────────────────
-MEDIAPIPE_VIDEO_MODE = False  # VIDEO mode measured: features shift 0.3-1.3 std vs IMAGE (training) and not faster -> off
+# VIDEO mode is ~25% faster (32 vs 43 ms/frame) but shifts features 0.3-1.3
+# training-std vs IMAGE mode (all training data) and flips hand presence on
+# 5-9% of frames (tools/compare_mp_modes.py). Enable only after re-recording
+# training data in VIDEO mode.
+MEDIAPIPE_VIDEO_MODE = False
 # Overlay coordinates are rounded to this many decimals in responses.
 OVERLAY_DECIMALS = 4
