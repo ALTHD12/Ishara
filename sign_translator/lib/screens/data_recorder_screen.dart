@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../services/sign_classifier_service.dart';
 import '../theme/app_themes.dart';
 import '../widgets/neo_decorations.dart';
+import '../widgets/connection_status_badge.dart';
 
 class DataRecorderScreen extends StatefulWidget {
   const DataRecorderScreen({super.key});
@@ -224,7 +225,13 @@ class _DataRecorderScreenState extends State<DataRecorderScreen> with WidgetsBin
                             },
                           ),
                         ),
-                        
+
+                        const Positioned(
+                          bottom: 16,
+                          left: 16,
+                          child: ConnectionStatusBadge(),
+                        ),
+
                         // Camera flip button — neobrutalism square
                         Positioned(
                           bottom: 16,

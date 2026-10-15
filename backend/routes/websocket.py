@@ -169,7 +169,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 try:
                     cmd = json.loads(message_dict["text"])
                     action = cmd.get("action")
-                    if action == "start_continuous_recording":
+                    if action == "ping":
+                        await websocket.send_text(json.dumps({"pong": time.time()}))
+                    elif action == "start_continuous_recording":
                         is_recording_mode = True
                         recording_label = cmd.get("label", "UNKNOWN").upper()
                         recording_state = "continuous_recording"

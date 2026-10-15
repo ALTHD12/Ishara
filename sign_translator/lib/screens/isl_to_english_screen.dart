@@ -6,6 +6,7 @@ import '../services/isl_converter_service.dart';
 
 import '../theme/app_themes.dart';
 import '../widgets/neo_decorations.dart';
+import '../widgets/connection_status_badge.dart';
 import 'package:flutter/foundation.dart';
 import '../main.dart'; // To access routeObserver
 
@@ -371,6 +372,13 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
                             },
                           ),
                         ),
+
+                      // Backend link status — tap: retry, long-press: server settings
+                      const Positioned(
+                        bottom: 16,
+                        left: 16,
+                        child: ConnectionStatusBadge(),
+                      ),
 
                       // Camera flip button — neobrutalism square button
                       Positioned(

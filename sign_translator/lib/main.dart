@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'config/app_config.dart';
 import 'services/isl_converter_service.dart';
 import 'services/sign_classifier_service.dart';
 import 'services/theme_provider.dart';
@@ -10,6 +11,7 @@ final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<v
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppConfig.load();
 
   // Lock to portrait — important for consistent hand detection
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
