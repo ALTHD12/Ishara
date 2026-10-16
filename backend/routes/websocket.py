@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import cv2
 import numpy as np
@@ -92,10 +93,22 @@ _SAVE_FRAMES_DIR = os.environ.get("ISL_DEBUG_SAVE_FRAMES", "")
 if _SAVE_FRAMES_DIR:
     os.makedirs(_SAVE_FRAMES_DIR, exist_ok=True)
 
+# Debug: ISL_DEBUG_DECISIONS=1 adds "why" (reason the last frame did not emit a
+# word, see LiveDecoder.last_reason) to every live response and logs changes.
+DEBUG_DECISIONS = os.environ.get("ISL_DEBUG_DECISIONS", "").lower() in ("1", "true", "yes")
+
 
 def _compact_nodes(nodes):
     d = LC.OVERLAY_DECIMALS
     return [[round(n["x"], d), round(n["y"], d)] for n in nodes]
+
+
+def _quantized_nodes(nodes):
+    """Overlay only: x,y as little-endian int16 (value * OVERLAY_Q_SCALE),
+    base64. No z. 478 face points -> ~2.5 KB instead of ~8.5 KB of JSON floats."""
+    xy = np.array([(n["x"], n["y"]) for n in nodes], dtype=np.float64) * LC.OVERLAY_Q_SCALE
+    q = np.clip(np.round(xy), -32768, 32767).astype("<i2")
+    return base64.b64encode(q.tobytes()).decode("ascii")
 
 
 class ConnState:
@@ -112,6 +125,13 @@ class ConnState:
         self.training_finished = False
         self.training_success = False
         self.server_dropped = 0
+        # Set by the {"action":"reset"} handler, applied on the frame worker
+        # thread before the next frame (the decoder is not thread-safe).
+        self.reset_requested = False
+        # Overlay face detail: "full" (478-point mesh, quantized) or "light"
+        # (OVERLAY_FACE_POINTS subset). Set by {"action":"overlay","face":...}.
+        self.face_mode = LC.OVERLAY_FACE_DEFAULT
+        self.last_reason_logged = None
 
 
 def process_frame(st, message, t_recv, timer):
@@ -150,6 +170,10 @@ def process_frame(st, message, t_recv, timer):
         if st.saved_frame_counter % 30 == 1:
             cv2.imwrite(os.path.join(_SAVE_FRAMES_DIR, f"frame_{st.saved_frame_counter:05d}.png"),
                         cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR))
+
+    if st.reset_requested:
+        st.reset_requested = False
+        st.decoder.reset()
 
     live = not st.is_recording_mode
     if live and LC.MEDIAPIPE_VIDEO_MODE:
@@ -198,7 +222,9 @@ def process_frame(st, message, t_recv, timer):
             status_msg = ("Training Complete! Model Reloaded." if st.training_success
                           else "Training Failed! You need at least 2 signs recorded.")
             st.training_finished = False
+            eid = st.decoder.event_id  # keep ids monotonic (client drops eid <= last seen)
             st.decoder = LiveDecoder(lambda w: predict_window(w), classes)
+            st.decoder.event_id = eid
         else:
             status_msg = "Training model in background... (Check Terminal for progress)"
     elif model is not None:
@@ -216,11 +242,26 @@ def process_frame(st, message, t_recv, timer):
             eid, esign, _ = st.decoder.last_event
             out["eid"] = eid      # client appends a word whenever eid increases
             out["esign"] = esign
+        if DEBUG_DECISIONS:
+            why = st.decoder.last_reason
+            out["why"] = why
+            kind = why.split(" ", 1)[0]
+            if kind != st.last_reason_logged:
+                st.last_reason_logged = kind
+                print(f"[DECISION] t={t_frame:.2f} hands={int(has_hands)} {why}", flush=True)
 
     for key, name in (("pose", "pose"), ("face", "face"),
                       ("left_hand", "left_hand"), ("right_hand", "right_hand")):
         if key in landmarks:
-            out[name] = _compact_nodes(landmarks[key])
+            nodes = landmarks[key]
+            if key == "face" and live and len(nodes) >= 468:
+                # Overlay only - features were computed from the full landmarks above.
+                if st.face_mode == "full":
+                    out["face_q"] = _quantized_nodes(nodes)
+                    continue
+                if LC.OVERLAY_FACE_POINTS is not None:
+                    nodes = [nodes[i] for i in LC.OVERLAY_FACE_POINTS]
+            out[name] = _compact_nodes(nodes)
     if status_msg:
         out["recording_status"] = status_msg
     if timer:
@@ -303,8 +344,11 @@ async def websocket_endpoint(websocket: WebSocket):
                         st.recording_state = "continuous_recording"
                         st.is_recording_mode = True
                         print(f"Started continuous 30s recording for {st.recording_label}")
+                    elif action == "overlay":
+                        if cmd.get("face") in ("full", "light"):
+                            st.face_mode = cmd["face"]
                     elif action == "reset":
-                        st.decoder.reset()
+                        st.reset_requested = True
                     elif action == "train_model":
                         st.recording_state = "training"
 

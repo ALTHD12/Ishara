@@ -60,9 +60,17 @@ class LiveDecoder:
         self.event_id = 0
         self.last_event = None         # (id, sign, t)
         self.last_probs = None
+        self.vote_confs = deque(maxlen=cfg.VOTE_HISTORY)  # top prob per history entry
+        # Why the last push() did not emit (debug readout; see DECISION_REASONS).
+        self.last_reason = "init"
 
     def reset(self):
+        # Event ids stay monotonic for the lifetime of the connection: the
+        # client only appends a word when eid > its last seen eid, so restarting
+        # at 1 after START (reset) silently dropped the first words.
+        event_id = self.event_id
         self.__init__(self.predict, self.classes, self.cfg)
+        self.event_id = event_id
 
     # ------------------------------------------------------------------
     def _window(self, t_now):
@@ -104,15 +112,20 @@ class LiveDecoder:
 
         win, active = self._window(t)
         if win is None:
+            self.last_reason = "window_not_full"
             return None
-        if active.sum() < cfg.MIN_ACTIVE_FRACTION * cfg.WINDOW_FRAMES:
+        n_active = int(active.sum())
+        if n_active < cfg.MIN_ACTIVE_FRACTION * cfg.WINDOW_FRAMES:
             self.history.clear()
+            self.vote_confs.clear()
             self.display_sign = None
             self.display_conf = 0.0
+            self.last_reason = f"few_active {n_active}/{cfg.WINDOW_FRAMES}"
             return None
         n = self.eligible_count
         self.eligible_count += 1
         if n % cfg.INFER_EVERY_N_FRAMES != 0:
+            self.last_reason = "skip_frame"
             return None
 
         probs = self.predict(win)
@@ -120,19 +133,27 @@ class LiveDecoder:
         k = int(np.argmax(probs))
         conf = float(probs[k])
         self.history.append(k if conf >= cfg.CONFIDENCE_THRESHOLD else -1)
+        self.vote_confs.append(conf)
+        top_s = f"{self.classes[k]} {conf:.2f}"
         if len(self.history) < cfg.VOTE_HISTORY:
+            self.last_reason = (f"below_conf {top_s}" if conf < cfg.CONFIDENCE_THRESHOLD
+                                else f"vote_filling {len(self.history)}/{cfg.VOTE_HISTORY} {top_s}")
             return None
         valid = [x for x in self.history if x != -1]
         if len(valid) < cfg.VOTES_TO_EMIT:
+            self.last_reason = f"below_conf {top_s} ({len(valid)}/{cfg.VOTE_HISTORY} confident)"
             return None
         counts = np.bincount(valid)
         top = int(np.argmax(counts))
         if counts[top] < cfg.VOTES_TO_EMIT:
+            self.last_reason = f"vote_not_reached {int(counts[top])}/{cfg.VOTES_TO_EMIT} {top_s}"
             return None
 
         sign = self.classes[top]
         self.display_sign = sign
-        self.display_conf = 1.0
+        # Mean model probability of the winning class over its votes (was a
+        # constant 1.0, which made the badge read 100% for every decision).
+        self.display_conf = float(np.mean([c for x, c in zip(self.history, self.vote_confs) if x == top]))
         # Flush: next decision needs fresh frames.
         horizon = cfg.WINDOW_FRAMES / cfg.WINDOW_FPS
         if cfg.RESAMPLE:
@@ -142,16 +163,20 @@ class LiveDecoder:
             while len(self.frames) > keep:
                 self.frames.popleft()
         self.history.clear()
+        self.vote_confs.clear()
 
         if getattr(cfg, "REPEAT_POLICY", "cooldown") == "differ_from_last":
             # legacy client behaviour: never the same word twice in a row
             if self.last_event and self.last_event[1] == sign:
+                self.last_reason = f"repeat_blocked {sign}"
                 return None
         else:
             last = self.last_emit.get(sign)
             if last is not None and t - last < cfg.REPEAT_COOLDOWN_S:
+                self.last_reason = f"cooldown {sign} {t - last:.1f}/{cfg.REPEAT_COOLDOWN_S}s"
                 return None
         self.last_emit[sign] = t
         self.event_id += 1
         self.last_event = (self.event_id, sign, t)
+        self.last_reason = f"emit {sign} #{self.event_id}"
         return sign

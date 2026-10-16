@@ -38,3 +38,17 @@ NO_HAND_CLEAR_S = 2.0
 MEDIAPIPE_VIDEO_MODE = False
 # Overlay coordinates are rounded to this many decimals in responses.
 OVERLAY_DECIMALS = 4
+# Live responses carry only these face-mesh points for the overlay (18-point
+# face-oval loop, eye corners, nose tip, mouth corners/centre) instead of all
+# 478: response ~10 KB -> ~1.9 KB. Overlay only; features are computed from
+# the full landmarks before this. None = send all 478.
+OVERLAY_FACE_POINTS = [10, 297, 284, 389, 454, 361, 397, 379, 400, 152, 176, 150, 172,
+                       132, 234, 162, 54, 67,
+                       33, 133, 362, 263, 1, 61, 291, 13, 14]
+# Default face detail for live responses until the client says otherwise:
+# "full" = all 478 face-mesh points sent as quantized int16 x,y ("face_q"),
+# "light" = only OVERLAY_FACE_POINTS as JSON ("face").
+OVERLAY_FACE_DEFAULT = "full"
+# Quantization of "face_q": coordinate * scale -> int16 (1/16384 of the frame,
+# far below one preview pixel; range -2..2 covers points just outside the frame).
+OVERLAY_Q_SCALE = 16384

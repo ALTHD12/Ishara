@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import socket
@@ -84,14 +85,63 @@ def lan_ips():
     return [ip for ip in ips if not ip.startswith("127.") and not ip.startswith("169.254.")]
 
 
+def interfaces():
+    """[(adapter name, IPv4)] for every interface with an address. Windows:
+    parsed from `ipconfig`; elsewhere / on failure: lan_ips() with no names."""
+    out = []
+    if os.name == "nt":
+        try:
+            txt = subprocess.run(["ipconfig"], capture_output=True, text=True, timeout=5).stdout
+            name = "?"
+            for line in txt.splitlines():
+                if line and not line.startswith(" ") and line.rstrip().endswith(":"):
+                    name = line.rstrip()[:-1].split(" adapter ", 1)[-1]
+                elif "IPv4" in line and ":" in line:
+                    ip = line.split(":", 1)[1].strip().split("(")[0].strip()
+                    out.append((name, ip))
+        except Exception:
+            out = []
+    if not out:
+        out = [("", ip) for ip in lan_ips()]
+    return [(n, ip) for n, ip in out if not ip.startswith(("127.", "169.254."))]
+
+
+def is_tailscale(name, ip):
+    """Tailscale uses the CGNAT range 100.64.0.0/10 (100.64.x.x - 100.127.x.x)."""
+    try:
+        a, b = (int(x) for x in ip.split(".")[:2])
+    except ValueError:
+        return False
+    return "tailscale" in name.lower() or (a == 100 and 64 <= b <= 127)
+
+
+def tailscale_dns_name():
+    """This machine's MagicDNS name (e.g. laptop.tailXXXX.ts.net), or None."""
+    exe = shutil.which("tailscale") or r"C:\Program Files\Tailscale\tailscale.exe"
+    try:
+        r = subprocess.run([exe, "status", "--json"], capture_output=True, timeout=3)
+        # bytes + utf-8: device names can contain non-cp1252 characters
+        name = json.loads(r.stdout.decode("utf-8", "replace")).get("Self", {}).get("DNSName", "")
+        return name.rstrip(".") or None
+    except Exception:
+        return None
+
+
 def print_banner():
     print("=" * 64)
     print(f" Ishara backend listening on 0.0.0.0:{PORT}")
-    ips = lan_ips()
-    if ips:
+    ifaces = interfaces()
+    if ifaces:
         print(" Enter one of these in the app (Settings > BACKEND SERVER):")
-        for ip in ips:
-            print(f"   {ip}:{PORT}    ->  ws://{ip}:{PORT}/   (test: http://{ip}:{PORT}/)")
+        for name, ip in ifaces:
+            tag = "  <- TAILSCALE" if is_tailscale(name, ip) else ""
+            label = f"[{name}] " if name else ""
+            print(f"   {label}{ip}:{PORT}    ->  ws://{ip}:{PORT}/   (test: http://{ip}:{PORT}/){tag}")
+        if any(is_tailscale(n, ip) for n, ip in ifaces):
+            dns = tailscale_dns_name()
+            if dns:
+                print(f"   [Tailscale MagicDNS] {dns}:{PORT}    ->  ws://{dns}:{PORT}/   "
+                      f"(test: http://{dns}:{PORT}/)  <- TAILSCALE")
     else:
         print(" No LAN IP found - connect to Wi-Fi / phone hotspot.")
     print(f" USB (adb reverse): 127.0.0.1:{PORT}")
