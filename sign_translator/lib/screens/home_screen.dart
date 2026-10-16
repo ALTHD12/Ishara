@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/theme_provider.dart';
+import '../services/sign_classifier_service.dart';
 import '../theme/app_themes.dart';
 import '../widgets/neo_decorations.dart';
+import '../widgets/connection_status_badge.dart';
 import 'isl_to_english_screen.dart';
 import 'english_to_isl_screen.dart';
 import 'data_recorder_screen.dart';
@@ -233,6 +235,23 @@ class _HomeScreenState extends State<HomeScreen> {
                 context,
                 MaterialPageRoute(builder: (context) => const DataRecorderScreen()),
               );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.wifi_tethering),
+            title: Text(
+              'BACKEND SERVER',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+                fontSize: 14,
+              ),
+            ),
+            subtitle: Text(context.watch<SignClassifierService>().serverAddress),
+            onTap: () {
+              Navigator.pop(context);
+              showServerSettingsDialog(context);
             },
           ),
           ListTile(

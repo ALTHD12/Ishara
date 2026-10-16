@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/sign_classifier_service.dart';
 import '../services/isl_converter_service.dart';
+import '../config/live_config.dart';
 
 import '../theme/app_themes.dart';
 import '../widgets/neo_decorations.dart';
+import '../widgets/connection_status_badge.dart';
 import 'package:flutter/foundation.dart';
 import '../main.dart'; // To access routeObserver
 
@@ -29,11 +32,11 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
   String _englishOutput = '';
   String _structureNote = '';
 
-  // Debounce: avoid adding the same word repeatedly
-  String _lastAddedSign = '';
+  // Words arrive as server decision events (majority vote + per-sign repeat
+  // cooldown happen server-side; see backend/live_config.py).
+  StreamSubscription<String>? _signSub;
   String _currentConsecutiveSign = '';
   int _consecutiveFrames = 0;
-  static const int _consecutiveThreshold = 2;
 
   late SignClassifierService _classifierService;
   late ISLConverterService _converterService;
@@ -53,6 +56,7 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _classifierService.loadModels();
       _classifierService.addListener(_onClassifierUpdate);
+      _signSub = _classifierService.signEvents.listen(_onSignEvent);
     });
   }
 
@@ -84,30 +88,28 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
     }
   }
 
+  void _onSignEvent(String sign) {
+    if (!mounted || !_isTranslating) return;
+    if (LiveConfig.clientConsecutiveThreshold > 1 &&
+        _consecutiveFrames < LiveConfig.clientConsecutiveThreshold) {
+      return; // optional extra client-side confirmation (off by default)
+    }
+    setState(() {
+      _glossBuffer.add(sign);
+      _translate();
+    });
+  }
+
   void _onClassifierUpdate() {
     if (!mounted || !_isTranslating) return;
-    
-    final currentSign = _classifierService.currentSign;
-    
-    if (currentSign != null && currentSign.isNotEmpty) {
-      if (currentSign == _currentConsecutiveSign) {
-        _consecutiveFrames++;
-        if (_consecutiveFrames == _consecutiveThreshold) {
-          if (currentSign != _lastAddedSign) {
-            setState(() {
-              _glossBuffer.add(currentSign);
-              _lastAddedSign = currentSign;
-              _translate();
-            });
-          }
-        }
-      } else {
-        _currentConsecutiveSign = currentSign;
-        _consecutiveFrames = 1;
-      }
+    // Track how many consecutive results showed the same sign (only used when
+    // LiveConfig.clientConsecutiveThreshold > 1).
+    final currentSign = _classifierService.currentSign ?? '';
+    if (currentSign.isNotEmpty && currentSign == _currentConsecutiveSign) {
+      _consecutiveFrames++;
     } else {
-      _currentConsecutiveSign = '';
-      _consecutiveFrames = 0;
+      _currentConsecutiveSign = currentSign;
+      _consecutiveFrames = currentSign.isEmpty ? 0 : 1;
     }
   }
 
@@ -193,7 +195,6 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
         _glossBuffer.clear();
         _englishOutput = '';
         _structureNote = '';
-        _lastAddedSign = '';
         _currentConsecutiveSign = '';
         _consecutiveFrames = 0;
       });
@@ -222,6 +223,7 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
     WidgetsBinding.instance.removeObserver(this);
     routeObserver.unsubscribe(this);
     _classifierService.removeListener(_onClassifierUpdate);
+    _signSub?.cancel();
     _camera?.dispose();
     super.dispose();
   }
@@ -371,6 +373,13 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
                             },
                           ),
                         ),
+
+                      // Backend link status — tap: retry, long-press: server settings
+                      const Positioned(
+                        bottom: 16,
+                        left: 16,
+                        child: ConnectionStatusBadge(),
+                      ),
 
                       // Camera flip button — neobrutalism square button
                       Positioned(

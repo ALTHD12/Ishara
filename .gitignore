@@ -39,3 +39,5 @@ sign_translator/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegi
 
 # Backups
 *.zip
+CLAUDE.md
+handoff.md

@@ -71,3 +71,47 @@ class CameraUtils {
     }
   }
 }
+
+/// Packs a YUV420 frame as planar Y (w*h) + U + V (each ceil(w/2)*ceil(h/2)),
+/// 1.5 bytes/pixel instead of 3 for RGB. The backend applies exactly the same
+/// integer YUV->RGB math as [CameraUtils.yuvConverter], so the RGB image it
+/// reconstructs is bit-identical (verified by backend/tools/check_yuv_packing.py).
+/// Only used when no downsampling is needed (step == 1); returns null otherwise.
+class YuvPacker {
+  static Map<String, dynamic>? pack(Map<String, dynamic> data) {
+    try {
+      if (data['formatName'] != 'yuv420') return null;
+      final width = data['width'] as int;
+      final height = data['height'] as int;
+      final step = (width > height ? width : height) ~/ 300;
+      if (step > 1) return null;
+      final planes = data['planes'] as List<dynamic>;
+      final yPlane = planes[0] as Uint8List;
+      final uPlane = planes[1] as Uint8List;
+      final vPlane = planes[2] as Uint8List;
+      final yRowStride = data['yRowStride'] as int;
+      final uvRowStride = data['uvRowStride'] as int;
+      final uvPixelStride = data['uvPixelStride'] as int;
+      final cw = (width + 1) ~/ 2, ch = (height + 1) ~/ 2;
+      final out = Uint8List(width * height + 2 * cw * ch);
+      var o = 0;
+      for (var y = 0; y < height; y++) {
+        final row = y * yRowStride;
+        out.setRange(o, o + width, yPlane, row);
+        o += width;
+      }
+      final vOff = o + cw * ch;
+      for (var y = 0; y < ch; y++) {
+        for (var x = 0; x < cw; x++) {
+          final i = y * uvRowStride + x * uvPixelStride;
+          out[o] = uPlane[i];
+          out[vOff + (o - width * height)] = vPlane[i];
+          o++;
+        }
+      }
+      return {'width': width, 'height': height, 'bytes': out};
+    } catch (_) {
+      return null;
+    }
+  }
+}
