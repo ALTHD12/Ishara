@@ -9,6 +9,8 @@ import '../config/live_config.dart';
 import '../theme/app_themes.dart';
 import '../widgets/neo_decorations.dart';
 import '../widgets/connection_status_badge.dart';
+import '../widgets/landmark_overlay.dart';
+import '../widgets/live_debug_panel.dart';
 import 'package:flutter/foundation.dart';
 import '../main.dart'; // To access routeObserver
 
@@ -89,7 +91,11 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
   }
 
   void _onSignEvent(String sign) {
-    if (!mounted || !_isTranslating) return;
+    if (!mounted) return;
+    if (!_isTranslating) {
+      _classifierService.noteClientDrop('not translating: $sign');
+      return;
+    }
     if (LiveConfig.clientConsecutiveThreshold > 1 &&
         _consecutiveFrames < LiveConfig.clientConsecutiveThreshold) {
       return; // optional extra client-side confirmation (off by default)
@@ -261,19 +267,19 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
                                   // Hand Nodes Overlay
                                   if (_isTranslating)
                                     Positioned.fill(
-                                      child: Consumer<SignClassifierService>(
-                                        builder: (context, classifier, child) {
-                                          return CustomPaint(
-                                            painter: HolisticNodePainter(
-                                              poseNodes: classifier.poseNodes,
-                                              faceNodes: classifier.faceNodes,
-                                              leftHandNodes: classifier.leftHandNodes,
-                                              rightHandNodes: classifier.rightHandNodes,
-                                              isFrontCamera: _lensDirection == CameraLensDirection.front,
-                                              theme: theme,
-                                            ),
-                                          );
-                                        },
+                                      // Smoothed, fading overlay (display only).
+                                      // Previous: HolisticNodePainter below.
+                                      child: LandmarkOverlay(
+                                        service: _classifierService,
+                                        mirror: _lensDirection == CameraLensDirection.front,
+                                        // Theme accents: face = primary (pink /
+                                        // yellow by theme), left hand = secondary,
+                                        // right hand = coral (STOP pink -> sunset orange).
+                                        faceColor: theme.colorScheme.primary,
+                                        leftHandColor: theme.colorScheme.secondary,
+                                        rightHandColor: Color.lerp(theme.colorScheme.error,
+                                            const Color(0xFFFF8C42), 0.55)!,
+                                        poseColor: Colors.white,
                                       ),
                                     ),
                                 ],
@@ -373,6 +379,14 @@ class _ISLToEnglishScreenState extends State<ISLToEnglishScreen> with WidgetsBin
                             },
                           ),
                         ),
+
+                      // Debug readout (Settings > DEBUG READOUT)
+                      Positioned(
+                        left: 8,
+                        right: 8,
+                        bottom: 72,
+                        child: LiveDebugPanel(translating: _isTranslating),
+                      ),
 
                       // Backend link status — tap: retry, long-press: server settings
                       const Positioned(

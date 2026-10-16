@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../config/app_config.dart';
 import '../services/theme_provider.dart';
 import '../services/sign_classifier_service.dart';
 import '../theme/app_themes.dart';
@@ -253,6 +254,48 @@ class _HomeScreenState extends State<HomeScreen> {
               Navigator.pop(context);
               showServerSettingsDialog(context);
             },
+          ),
+          // Overlay face detail: FULL 478-point mesh or LIGHT contour points.
+          StatefulBuilder(
+            builder: (context, setTileState) => SwitchListTile(
+              secondary: const Icon(Icons.face_retouching_natural),
+              title: Text(
+                'FACE MESH',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                  fontSize: 14,
+                ),
+              ),
+              subtitle: Text(AppConfig.faceMeshFull ? 'FULL' : 'LIGHT'),
+              value: AppConfig.faceMeshFull,
+              onChanged: (v) async {
+                await context.read<SignClassifierService>().setFaceMeshFull(v);
+                setTileState(() {});
+              },
+            ),
+          ),
+          // Live debug readout on the ISL->English screen (decision reason,
+          // RTT / fps / bytes, overlay age). Persisted in AppConfig.
+          StatefulBuilder(
+            builder: (context, setTileState) => SwitchListTile(
+              secondary: const Icon(Icons.bug_report_outlined),
+              title: Text(
+                'DEBUG READOUT',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.8,
+                  fontSize: 14,
+                ),
+              ),
+              value: AppConfig.debugReadout,
+              onChanged: (v) async {
+                await AppConfig.setDebugReadout(v);
+                setTileState(() {});
+              },
+            ),
           ),
           ListTile(
             leading: const Icon(Icons.info_outline),

@@ -88,6 +88,7 @@ void _workerMain(SendPort toMain) {
   WebSocket? ws;
   int connGen = 0;
   double tSentMs = 0, convertMs = 0, sendMs = 0;
+  int sentBytes = 0;
 
   double now() => clock.elapsedMicroseconds / 1000.0;
 
@@ -126,6 +127,7 @@ void _workerMain(SendPort toMain) {
                 convertMs,
                 sendMs,
                 parseMs,
+                isPong ? 0 : sentBytes, // size of the frame this result answers
               ]);
             },
             onDone: () {
@@ -191,6 +193,7 @@ void _workerMain(SendPort toMain) {
         convertMs = t1 - t0;
         sendMs = t2 - t1;
         tSentMs = t2;
+        sentBytes = out.length;
         break;
     }
   });

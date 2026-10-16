@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:math';
 import 'dart:ui';
 import 'package:camera/camera.dart';
@@ -9,6 +10,7 @@ import 'package:flutter/widgets.dart' show WidgetsBinding, WidgetsBindingObserve
 import '../config/app_config.dart';
 import '../config/live_config.dart';
 import '../utils/latency_stats.dart';
+import '../utils/net_stats.dart';
 import 'frame_link.dart';
 
 class SignResult {
@@ -61,6 +63,21 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
   final StreamController<String> _signEvents = StreamController<String>.broadcast();
   Stream<String> get signEvents => _signEvents.stream;
   int _lastEventId = 0;
+  int _prevRespEid = 0;
+
+  // ── Debug readout (Settings > DEBUG READOUT, or --dart-define=ISL_DEBUG_LIVE=true) ──
+  /// Server's reason for the last decision ("why"; backend ISL_DEBUG_DECISIONS=1).
+  String _decisionWhy = '';
+  String get decisionWhy => _decisionWhy;
+  /// Last client-side reason a server word was not shown.
+  String _clientDrop = '';
+  String get clientDrop => _clientDrop;
+  void noteClientDrop(String why) => _clientDrop = why;
+  final NetStats net = NetStats();
+  /// Age of the landmarks when they arrive: frame handed to the link -> result
+  /// received (drawn on the next UI frame, <= 16 ms later).
+  double _resultAgeMs = 0;
+  double get resultAgeMs => _resultAgeMs;
 
   String _lastDebugError = '';
   String get lastDebugError => _lastDebugError;
@@ -78,6 +95,10 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
   List<Offset> get faceNodes => _faceNodes;
   List<Offset> get leftHandNodes => _leftHandNodes;
   List<Offset> get rightHandNodes => _rightHandNodes;
+  /// Increments on every frame result (and on reset), so listeners can tell a
+  /// new landmark set from other notifications (pong, status).
+  int _resultSeq = 0;
+  int get resultSeq => _resultSeq;
 
   // ── Backpressure ──
   bool _inFlight = false;
@@ -133,10 +154,16 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
         _attempt = 0;
         _isReady = true;
         _inFlight = false;
+        // New socket = new server ConnState whose event ids restart at 1.
+        // Keeping the old id here silently dropped every word after a reconnect.
+        _lastEventId = 0;
+        _prevRespEid = 0;
+        net.reset();
         _lastRx = DateTime.now();
         _lastDebugError = '';
         _setStatus(ConnectionStatus.connected);
         _startHeartbeat();
+        _sendOverlayMode();
         debugPrint('Connected to backend ${AppConfig.backendWsUrl}');
         break;
       case 'closed':
@@ -154,7 +181,8 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
         final data = e[1];
         if (data is Map) {
           _handleResult(data.cast<String, dynamic>(), (e[2] as num).toDouble(),
-              (e[3] as num).toDouble(), (e[4] as num).toDouble(), (e[5] as num).toDouble());
+              (e[3] as num).toDouble(), (e[4] as num).toDouble(), (e[5] as num).toDouble(),
+              e.length > 6 ? (e[6] as num).toInt() : 0);
         }
         break;
     }
@@ -224,7 +252,7 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _handleResult(Map<String, dynamic> data, double rttMs, double convertMs,
-      double sendMs, double parseMs) {
+      double sendMs, double parseMs, int bytes) {
     if (data.containsKey('pong')) {
       if (_pingSentUs > 0) {
         _lastPingRtt = Duration(microseconds: _clock.elapsedMicroseconds - _pingSentUs);
@@ -236,9 +264,11 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
     _inFlight = false; // unlock for next frame
 
     _poseNodes = _parseNodes(data['pose']);
-    _faceNodes = _parseNodes(data['face']);
+    final faceQ = data['face_q'];
+    _faceNodes = faceQ is String ? _parseQuantized(faceQ) : _parseNodes(data['face']);
     _leftHandNodes = _parseNodes(data['left_hand']);
     _rightHandNodes = _parseNodes(data['right_hand']);
+    _resultSeq++;
 
     if (data['sign'] != null) {
       _currentSign = data['sign'] as String;
@@ -253,7 +283,13 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
       _lastEventId = eid;
       final s = data['esign'];
       if (s is String) _signEvents.add(s);
+    } else if (eid is int && eid != _prevRespEid) {
+      _clientDrop = 'duplicate eid $eid <= $_lastEventId (${data['esign']})';
     }
+    if (eid is int) _prevRespEid = eid;
+    _decisionWhy = (data['why'] as String?) ?? '';
+    net.onResult(tRecv, rttMs, bytes);
+    _resultAgeMs = tRecv - _tCapture;
 
     _recordingStatus = (data['recording_status'] as String?) ?? '';
     _lastDebugError = '';
@@ -286,6 +322,41 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// "face_q": base64 of little-endian int16 x,y pairs, value = coord * 16384
+  /// (backend live_config.OVERLAY_Q_SCALE). Overlay only.
+  static const double _qScale = 16384.0;
+  List<Offset> _parseQuantized(String b64) {
+    try {
+      final bytes = base64Decode(b64);
+      final bd = ByteData.sublistView(bytes);
+      final n = bytes.length ~/ 4;
+      return [
+        for (var i = 0; i < n; i++)
+          Offset(bd.getInt16(i * 4, Endian.little) / _qScale,
+              bd.getInt16(i * 4 + 2, Endian.little) / _qScale)
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Feed a server-shaped result without a socket (tool/overlay_bench_test.dart).
+  @visibleForTesting
+  void debugInjectResult(Map<String, dynamic> data) => _handleResult(data, 0, 0, 0, 0, 0);
+
+  /// Tell the server which face detail to send (full mesh or light subset).
+  void _sendOverlayMode() {
+    if (_isReady) {
+      _link.sendText(jsonEncode({"action": "overlay", "face": AppConfig.faceMeshFull ? "full" : "light"}));
+    }
+  }
+
+  Future<void> setFaceMeshFull(bool full) async {
+    await AppConfig.setFaceMeshFull(full);
+    _sendOverlayMode();
+    notifyListeners();
+  }
+
   List<Offset> _parseNodes(dynamic list) {
     if (list == null) return const [];
     // Compact [[x, y], ...] in normalized [0, 1] coordinates of the upright frame.
@@ -301,15 +372,18 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
   /// Called for every camera frame. Sends at most one frame in flight and at
   /// most [maxFps] frames/s; everything else is dropped here, cheaply.
   Future<SignResult?> processFrame(CameraImage image, int sensorOrientation,
-      {double maxFps = LiveConfig.maxSendFps}) async {
+      {double? maxFps}) async {
     if (!_isReady) return null;
+    maxFps ??= LiveConfig.maxSendFps;
     final now = _nowMs;
     if (_inFlight) {
       if (now - _inFlightSinceMs < LiveConfig.resultTimeout.inMilliseconds) {
         _droppedSinceSend++;
+        net.busyDrops++; // camera frame skipped while waiting for the network
         return null;
       }
       _inFlight = false; // result lost: don't stall forever
+      net.timeouts++;
     }
     if (maxFps > 0 && now - _lastSendMs < 1000.0 / maxFps) {
       _droppedSinceSend++;
@@ -361,6 +435,7 @@ class SignClassifierService extends ChangeNotifier with WidgetsBindingObserver {
     _faceNodes = [];
     _leftHandNodes = [];
     _rightHandNodes = [];
+    _resultSeq++;
     _currentSign = null;
     _currentConfidence = 0;
     if (_isReady) _link.sendText('{"action":"reset"}');
